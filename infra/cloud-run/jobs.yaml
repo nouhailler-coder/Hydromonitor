@@ -1,0 +1,57 @@
+# Définitions déclaratives des 7 Cloud Run Jobs idempotents d'ingestion HydroMonitor
+jobs:
+  - name: hydrorivers-import
+    description: "Import batch idempotent des tronçons HydroRIVERS v1.0 depuis gs://PROJECT_BUCKET/hydrorivers/ vers PostGIS"
+    command: ["python", "-m", "ingestion.hydrorivers.importer"]
+    cpu: "4"
+    memory: "8Gi"
+    timeout: "3600s"
+    maxRetries: 1
+
+  - name: hydrobasins-import
+    description: "Import batch idempotent des polygones HydroBASINS v1.c (Pfafstetter) et jointure spatiale ST_Intersects"
+    command: ["python", "-m", "ingestion.hydrobasins.importer"]
+    cpu: "4"
+    memory: "8Gi"
+    timeout: "3600s"
+    maxRetries: 1
+
+  - name: glofas-historical-import
+    description: "Import batch de la réanalyse historique GloFAS v5.0 (Copernicus EWDS cems-glofas-historical)"
+    command: ["python", "-m", "ingestion.glofas.historical"]
+    cpu: "2"
+    memory: "4Gi"
+    timeout: "1800s"
+    maxRetries: 2
+
+  - name: glofas-forecast-update
+    description: "Mise à jour quotidienne des prévisions d'ensemble GloFAS v5.0 (51 membres)"
+    command: ["python", "-m", "ingestion.glofas.forecast"]
+    cpu: "2"
+    memory: "4Gi"
+    timeout: "1200s"
+    maxRetries: 3
+
+  - name: hubeau-stations-update
+    description: "Synchronisation quotidienne des stations de température des cours d'eau Hub'Eau (Eaufrance)"
+    command: ["python", "-m", "ingestion.hubeau.client", "--mode=stations"]
+    cpu: "1"
+    memory: "1Gi"
+    timeout: "600s"
+    maxRetries: 3
+
+  - name: hubeau-measurements-update
+    description: "Ingestion incrémentale des chroniques de température Hub'Eau sans écrasement historique"
+    command: ["python", "-m", "ingestion.hubeau.client", "--mode=chronique"]
+    cpu: "1"
+    memory: "2Gi"
+    timeout: "900s"
+    maxRetries: 3
+
+  - name: mapping-update
+    description: "Recalcul reproductible du mapping spatial HydroRIVERS ↔ GloFAS ↔ Stations Hub'Eau"
+    command: ["python", "-m", "ingestion.mapping.spatial_mapper"]
+    cpu: "2"
+    memory: "4Gi"
+    timeout: "1200s"
+    maxRetries: 2

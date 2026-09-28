@@ -1,0 +1,25 @@
+# Planification Google Cloud Scheduler déclenchant les Cloud Run Jobs via OAuth OIDC
+schedules:
+  - name: schedule-glofas-forecast-daily
+    cron: "30 6 * * *"
+    timeZone: "Europe/Paris"
+    targetJob: "glofas-forecast-update"
+    description: "Exécution quotidienne à 06h30 CET après publication du run 00 UTC CEMS GloFAS EWDS"
+
+  - name: schedule-hubeau-stations-daily
+    cron: "0 3 * * *"
+    timeZone: "Europe/Paris"
+    targetJob: "hubeau-stations-update"
+    description: "Synchronisation quotidienne du référentiel des stations thermiques Hub'Eau"
+
+  - name: schedule-hubeau-measurements-4h
+    cron: "15 */4 * * *"
+    timeZone: "Europe/Paris"
+    targetJob: "hubeau-measurements-update"
+    description: "Récupération toutes les 4 heures des nouvelles mesures thermiques in-situ Hub'Eau"
+
+  - name: schedule-mapping-weekly
+    cron: "0 4 * * 0"
+    timeZone: "Europe/Paris"
+    targetJob: "mapping-update"
+    description: "Vérification hebdomadaire et post-import du mapping spatial multi-critères"

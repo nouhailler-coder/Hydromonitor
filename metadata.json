@@ -1,0 +1,6 @@
+{
+  "name": "HydroMonitor — Observatoire Hydrologique & Géospatial",
+  "description": "Plateforme d'observation hydrologique et géospatiale combinant HydroRIVERS, HydroBASINS, GloFAS (Copernicus EWDS) et Hub'Eau (température des cours d'eau).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

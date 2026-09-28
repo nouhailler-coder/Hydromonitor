@@ -1,0 +1,47 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: hydromonitor-api
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/cloudsql-instances: ${GOOGLE_CLOUD_PROJECT}:europe-west1:hydromonitor-pg
+        run.googleapis.com/cpu-throttling: "false"
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "10"
+    spec:
+      serviceAccountName: hydromonitor-runtime@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com
+      containers:
+        - image: europe-west1-docker.pkg.dev/${GOOGLE_CLOUD_PROJECT}/hydromonitor/backend:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ENVIRONMENT
+              value: "production"
+            - name: GOOGLE_CLOUD_PROJECT
+              value: "${GOOGLE_CLOUD_PROJECT}"
+            - name: FIREBASE_PROJECT_ID
+              value: "${FIREBASE_PROJECT_ID}"
+            - name: GCS_BUCKET_NAME
+              value: "${GOOGLE_CLOUD_PROJECT}-hydromonitor-geodata"
+            - name: HUBEAU_BASE_URL
+              value: "https://hubeau.eaufrance.fr/api/v1/temperature"
+            - name: GLOFAS_EWDS_URL
+              value: "https://ewds.climate.copernicus.eu/api"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: hydromonitor-database-url
+                  key: latest
+            - name: GLOFAS_EWDS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hydromonitor-glofas-ewds-key
+                  key: latest
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi

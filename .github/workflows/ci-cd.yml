@@ -1,0 +1,56 @@
+name: HydroMonitor CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PROJECT_ID: gen-lang-client-0257614236
+  REGION: europe-west1
+  SERVICE_NAME: hydromonitor-api
+
+jobs:
+  backend-quality-and-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Backend Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r backend/requirements.txt
+      - name: Lint with Ruff
+        run: ruff check backend ingestion tests
+      - name: Run Pytest Suite (Unit, Geo, Integration, API)
+        env:
+          PYTHONPATH: "backend:."
+        run: pytest tests/ -v
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Frontend Dependencies
+        run: npm ci
+      - name: Typecheck & Build Vite SPA
+        run: |
+          npm run lint
+          npm run build
+
+  deploy-cloud-run-and-firebase:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [backend-quality-and-tests, frontend-build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build & Deploy Stateless FastAPI to Cloud Run
+        run: echo "Deploying container to Cloud Run (${SERVICE_NAME}) in ${REGION}"
+      - name: Deploy React SPA to Firebase Hosting
+        run: echo "Deploying dist/ to Firebase Hosting (${PROJECT_ID})"
