@@ -1,4 +1,4 @@
-"""Exécuteur de tests Python autonome (stdlib unittest) vérifiant les modules backend et ingestion."""
+"""Exécuteur de tests Python autonome (stdlib unittest) vérifiant les modules backend, ingestion et moteur d'analyse."""
 import sys
 import unittest
 from pathlib import Path
@@ -7,7 +7,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app.geo.spatial import haversine_distance_m, simplify_linestring_coords
 from app.services.river_service import RiverService
 from ingestion.glofas.parser import GlofasParser
 from ingestion.hydrorivers.importer import HydroRiversImporter
@@ -25,9 +24,9 @@ class HydroMonitorTestSuite(unittest.TestCase):
             glofas_point_id="GLOFAS-EU-SEINE-PARIS-042",
             river_segment_id="seg-seine-paris-20410199",
             timestamp_iso="2026-09-28T00:00:00Z",
-            discharge_m3s=486.4,
+            discharge_m3s=425.0,
         )
-        self.assertEqual(hist["value"], 486.4)
+        self.assertEqual(hist["value"], 425.0)
         self.assertEqual(hist["variable"], "discharge")
 
         fc = parser.parse_ensemble_forecast_step(
@@ -73,11 +72,20 @@ class HydroMonitorTestSuite(unittest.TestCase):
         self.assertIsNotNone(st_map)
         self.assertEqual(st_map["mapping_method"], "POSTGIS_ST_DWITHIN_TOPONYM_MATCH")
 
-    def test_river_service_search_and_nearby(self) -> None:
+    def test_river_service_and_hydrological_analysis_engine(self) -> None:
         svc = RiverService()
         seine = svc.search_rivers("Seine")
         self.assertEqual(len(seine), 1)
         self.assertEqual(seine[0]["id"], "river-seine")
+        self.assertEqual(seine[0]["reference_label"], "SEINE — PARIS")
+
+        analysis = svc.compute_hydrological_analysis("river-seine")
+        self.assertEqual(analysis["reference_label"], "SEINE — PARIS")
+        self.assertEqual(analysis["current_discharge_m3s"], 425.0)
+        self.assertEqual(analysis["seasonal_mean_for_date_m3s"], 365.0)
+        self.assertEqual(analysis["deviation_pct"], 16.4)
+        self.assertEqual(analysis["historical_percentile"], 72)
+        self.assertEqual(analysis["trend_label"], "↗ en hausse depuis 3 jours")
 
         nearby = svc.find_nearby(lat=48.8566, lon=2.3522, radius_km=20.0)
         self.assertGreaterEqual(len(nearby), 1)
@@ -93,7 +101,7 @@ class HydroMonitorTestSuite(unittest.TestCase):
                 "DIST_UP_KM": 224.5,
                 "DIST_DN_KM": 384.5,
                 "UPLAND_SKM": 44320.0,
-                "DIS_AV_CMS": 328.5,
+                "DIS_AV_CMS": 365.0,
             },
             river_id="river-seine",
             name="La Seine",

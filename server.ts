@@ -11,6 +11,7 @@ import {
   generateDischargeHistory,
   generateEnsembleForecast,
   generateTemperatureHistory,
+  computeHydrologicalAnalysis,
 } from './src/data/hydroSeedData.ts';
 
 const app = express();
@@ -127,12 +128,17 @@ app.get('/api/rivers/search', (req: Request, res: Response) => {
   ).map((r) => ({
     id: r.id,
     name: r.name,
+    reference_label: r.reference_label,
     country: r.country,
     approx_position: r.approx_position,
     type: r.type,
     basin: r.basin_name,
     river_code: r.river_code,
     current_discharge_m3s: r.current_discharge_m3s,
+    seasonal_mean_for_date_m3s: r.seasonal_mean_for_date_m3s,
+    discharge_anomaly_pct: r.discharge_anomaly_pct,
+    historical_percentile: r.historical_percentile,
+    trend_label: r.trend_label,
     current_temperature_c: r.current_temperature_c,
     last_updated_at: r.last_updated_at,
   }));
@@ -213,11 +219,14 @@ app.get('/api/rivers/:river_id', (req: Request, res: Response) => {
   const segments = RIVER_SEGMENTS_DATA.filter((s) => s.river_id === river.id);
   const stations = stationsState.filter((s) => s.river_id === river.id);
   const basin = BASINS_DATA[river.id];
+  const segmentId = req.query.segment_id ? String(req.query.segment_id) : undefined;
+  const analysis = computeHydrologicalAnalysis(river.id, segmentId);
 
   res.json({
     ...river,
     segments_count: segments.length,
     stations_count: stations.length,
+    analysis,
     basin_summary: basin
       ? {
           id: basin.id,
@@ -229,6 +238,18 @@ app.get('/api/rivers/:river_id', (req: Request, res: Response) => {
       : null,
     sources: ['HYDRORIVERS', 'HYDROBASINS', 'GLOFAS', 'HUBEAU'],
   });
+});
+
+// 6b. River Hydrological Analysis Engine (current state vs historical behavior)
+app.get('/api/rivers/:river_id/analysis', (req: Request, res: Response) => {
+  const river = findRiver(req.params.river_id);
+  if (!river) {
+    res.status(404).json({ detail: `Cours d'eau '${req.params.river_id}' introuvable.` });
+    return;
+  }
+  const segmentId = req.query.segment_id ? String(req.query.segment_id) : undefined;
+  const analysis = computeHydrologicalAnalysis(river.id, segmentId);
+  res.json(analysis);
 });
 
 // 7. River Segments (HydroRIVERS + GloFAS spatial mapping)
@@ -303,7 +324,8 @@ app.get('/api/rivers/:river_id/discharge/history', (req: Request, res: Response)
     return;
   }
   const days = Math.min(90, Math.max(7, parseInt(String(req.query.days ?? '30'), 10)));
-  let series = generateDischargeHistory(river.id, days);
+  const segmentId = req.query.segment_id ? String(req.query.segment_id) : undefined;
+  let series = generateDischargeHistory(river.id, days, segmentId);
 
   if (req.query.date_from) {
     const fromTs = new Date(String(req.query.date_from)).getTime();
@@ -339,7 +361,8 @@ app.get('/api/rivers/:river_id/forecast', (req: Request, res: Response) => {
     return;
   }
   const horizonDays = Math.min(30, Math.max(5, parseInt(String(req.query.days ?? '10'), 10)));
-  const steps = generateEnsembleForecast(river.id, horizonDays);
+  const segmentId = req.query.segment_id ? String(req.query.segment_id) : undefined;
+  const steps = generateEnsembleForecast(river.id, horizonDays, segmentId);
 
   res.json({
     river_id: river.id,

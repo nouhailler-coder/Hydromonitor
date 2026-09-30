@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   UserCheck,
   Navigation,
-  ChevronRight,
 } from 'lucide-react';
 import { hydroApi } from './api/hydroApi';
 import {
@@ -27,6 +26,7 @@ import {
   TemperaturePoint,
   DataSourceItem,
   IngestionStatusResponse,
+  HydrologicalAnalysis,
 } from './types/hydrology';
 import { HydroMapCanvas } from './map/HydroMapCanvas';
 import { RiverDossierPanel } from './components/RiverDossierPanel';
@@ -34,12 +34,15 @@ import { AdminModal } from './pages/AdminModal';
 import { AboutSourcesModal } from './pages/AboutSourcesModal';
 import { AuthModal } from './pages/AuthModal';
 import { auth, onAuthStateChanged, User } from './auth/firebase';
+import { formatSignedPercentFr } from './utils/formatters';
 
 export default function App() {
-  // Primary hydrological state (defaults to La Seine MVP)
+  // Primary hydrological state (defaults to La Seine — Paris)
   const [riversList, setRiversList] = useState<RiverDetail[]>([]);
   const [selectedRiverId, setSelectedRiverId] = useState<string>('river-seine');
+  const [activeSegmentId, setActiveSegmentId] = useState<string | undefined>(undefined);
   const [selectedRiver, setSelectedRiver] = useState<RiverDetail | null>(null);
+  const [analysis, setAnalysis] = useState<HydrologicalAnalysis | null>(null);
   const [basin, setBasin] = useState<BasinInfo | null>(null);
   const [segments, setSegments] = useState<RiverSegment[]>([]);
   const [stations, setStations] = useState<TemperatureStation[]>([]);
@@ -123,29 +126,33 @@ export default function App() {
     loadGlobalMetadata();
   }, [loadGlobalMetadata]);
 
-  // Load selected river full dossier (detail, basin, segments, stations, discharge, forecast, temperature)
+  // Load selected river full dossier & analytical engine
   useEffect(() => {
     let cancelled = false;
     async function loadRiverDossier() {
       try {
-        const [detail, basinData, segs, sts, disHist, fcSteps] = await Promise.all([
-          hydroApi.getRiverDetail(selectedRiverId),
+        const [detail, analysisData, basinData, segs, sts, disHist, fcSteps] = await Promise.all([
+          hydroApi.getRiverDetail(selectedRiverId, activeSegmentId),
+          hydroApi.getRiverAnalysis(selectedRiverId, activeSegmentId),
           hydroApi.getRiverBasin(selectedRiverId),
           hydroApi.getRiverSegments(selectedRiverId),
           hydroApi.getTemperatureStations(selectedRiverId),
-          hydroApi.getDischargeHistory(selectedRiverId, dischargeDays),
-          hydroApi.getRiverForecast(selectedRiverId, 10),
+          hydroApi.getDischargeHistory(selectedRiverId, dischargeDays, activeSegmentId),
+          hydroApi.getRiverForecast(selectedRiverId, 10, activeSegmentId),
         ]);
         if (cancelled) return;
 
         setSelectedRiver(detail);
+        setAnalysis(analysisData);
         setBasin(basinData);
         setSegments(segs);
         setStations(sts);
         setDischargeHistory(disHist);
         setForecastSteps(fcSteps);
 
-        const defaultStationId = sts[0]?.id || null;
+        const matchingStation =
+          sts.find((s) => s.river_segment_id === analysisData.active_segment_id) || sts[0];
+        const defaultStationId = matchingStation?.id || null;
         setSelectedStationId(defaultStationId);
 
         const tempSeries = await hydroApi.getTemperatureHistory(
@@ -164,11 +171,12 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedRiverId, dischargeDays]);
+  }, [selectedRiverId, activeSegmentId, dischargeDays]);
 
   // Reload temperature history when user switches station
   const handleSelectStation = async (stationId: string, riverIdFromMap?: string) => {
     if (riverIdFromMap && riverIdFromMap !== selectedRiverId) {
+      setActiveSegmentId(undefined);
       setSelectedRiverId(riverIdFromMap);
     }
     setSelectedStationId(stationId);
@@ -196,10 +204,15 @@ export default function App() {
   }, [searchQuery]);
 
   const handleSelectRiver = (riverId: string) => {
+    setActiveSegmentId(undefined);
     setSelectedRiverId(riverId);
     setSearchFocused(false);
     setNearbyBanner(null);
     window.history.replaceState({}, '', `/rivers/${riverId}`);
+  };
+
+  const handleSelectSegmentProfile = (segmentId: string) => {
+    setActiveSegmentId(segmentId);
   };
 
   // Nearby search (PostGIS ST_DWithin equivalent around Paris 48.8566, 2.3522)
@@ -208,9 +221,10 @@ export default function App() {
       const items = await hydroApi.getNearbyRivers(48.8566, 2.3522, 25);
       if (items.length > 0) {
         const nearest = items[0];
+        setActiveSegmentId(undefined);
         setSelectedRiverId(nearest.id);
         setNearbyBanner(
-          `Proximité PostGIS (48.85°N, 2.35°E, rayon 25 km) → ${nearest.name} détectée à ${nearest.distance_m} m`
+          `Diagnostic spatial (48.85°N, 2.35°E · 25 km) → ${nearest.reference_label || nearest.name} à ${nearest.distance_m} m : ${nearest.current_discharge_m3s} m³/s (${formatSignedPercentFr(nearest.discharge_anomaly_pct, 1)} vs moy. date, ${nearest.historical_percentile}e percentile)`
         );
       }
     } catch (err) {
@@ -232,17 +246,17 @@ export default function App() {
               <span className="font-display font-bold text-sm tracking-tight text-slate-50">
                 HYDROMONITOR
               </span>
-              <span className="hidden sm:inline-block px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 font-mono text-[10px] text-[#38BDF8]">
-                PostGIS • GloFAS v5 • Hub&apos;Eau
+              <span className="hidden sm:inline text-[11px] font-mono text-slate-400">
+                · Moteur d&apos;analyse hydrologique
               </span>
             </div>
             <p className="hidden md:block text-[10px] font-mono text-slate-400">
-              Observatoire Géospatial &amp; Hydrologique des Cours d&apos;Eau
+              État actuel vs comportement historique (1991–2020) · GloFAS v5 · Hub&apos;Eau · PostGIS
             </p>
           </div>
         </div>
 
-        {/* Search Input + Quick River Pills (Seine, Loire, Rhône) */}
+        {/* Search Input + Quick River Switchers (Seine, Loire, Rhône) */}
         <div className="flex items-center gap-2.5 flex-1 max-w-2xl">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
@@ -252,48 +266,61 @@ export default function App() {
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setTimeout(() => setSearchFocused(false), 180)}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder='Rechercher un cours d’eau (ex: "Seine", "Loire", "Rhône")...'
+              placeholder='Analyser un cours d’eau (ex: "Seine — Paris", "Loire", "Rhône")...'
               className="w-full pl-9 pr-3 py-1.5 bg-slate-950/90 border border-slate-800 rounded-lg text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-[#38BDF8] transition"
             />
 
-            {/* Search Dropdown Results */}
+            {/* Search Dropdown Results with Historical Context */}
             {searchFocused && searchResults.length > 0 && (
               <div className="absolute left-0 right-0 top-10 bg-[#0D1626] border border-slate-700 rounded-lg shadow-2xl overflow-hidden z-50">
-                <div className="px-3 py-1.5 bg-slate-950/80 border-b border-slate-800 text-[10px] font-mono uppercase text-slate-400 flex items-center justify-between">
-                  <span>Résultats PostgreSQL / PostGIS (`GET /api/rivers/search`)</span>
+                <div className="px-3 py-1.5 bg-slate-950/80 border-b border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                  <span>Moteur d&apos;analyse hydrologique (`GET /api/rivers/search`)</span>
                   <span>{searchResults.length} cours d&apos;eau</span>
                 </div>
-                {searchResults.map((hit) => (
-                  <button
-                    key={hit.id}
-                    type="button"
-                    onMouseDown={() => {
-                      setSearchQuery(hit.name);
-                      handleSelectRiver(hit.id);
-                    }}
-                    className="w-full px-3 py-2.5 text-left hover:bg-slate-800/70 border-b border-slate-800/60 last:border-none flex items-center justify-between gap-3 transition"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-xs text-slate-100">{hit.name}</span>
-                        <span className="font-mono text-[10px] text-[#38BDF8]">
-                          {hit.river_code}
-                        </span>
+                {searchResults.map((hit) => {
+                  const anomaly = hit.discharge_anomaly_pct ?? 0;
+                  return (
+                    <button
+                      key={hit.id}
+                      type="button"
+                      onMouseDown={() => {
+                        setSearchQuery(hit.name);
+                        handleSelectRiver(hit.id);
+                      }}
+                      className="w-full px-3 py-2.5 text-left hover:bg-slate-800/70 border-b border-slate-800/60 last:border-none flex items-center justify-between gap-3 transition"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-xs text-slate-100">
+                            {hit.reference_label || hit.name}
+                          </span>
+                          <span className="font-mono text-[10px] text-slate-400">
+                            · {hit.river_code}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                          {hit.trend_label || hit.basin}
+                        </div>
                       </div>
-                      <div className="text-[11px] text-slate-400 font-mono">
-                        {hit.type} • {hit.basin}
+                      <div className="text-right font-mono text-xs shrink-0 tabular-nums">
+                        <div className="text-slate-100 font-semibold">
+                          {hit.current_discharge_m3s} m³/s{' '}
+                          <span
+                            className={
+                              anomaly >= 0 ? 'text-[#38BDF8]' : 'text-amber-400'
+                            }
+                          >
+                            ({formatSignedPercentFr(anomaly, 1)})
+                          </span>
+                        </div>
+                        <div className="text-slate-400 text-[10px]">
+                          Moy. date: {hit.seasonal_mean_for_date_m3s ?? '—'} m³/s ·{' '}
+                          {hit.historical_percentile ?? '—'}e perc.
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-right font-mono text-xs shrink-0">
-                      <div className="text-[#38BDF8] font-semibold">
-                        {hit.current_discharge_m3s} m³/s
-                      </div>
-                      <div className="text-[#10B981] text-[11px]">
-                        {hit.current_temperature_c} °C
-                      </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -324,7 +351,7 @@ export default function App() {
             type="button"
             onClick={handleNearbyParisSearch}
             className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-[#38BDF8]/60 text-xs font-mono text-slate-300 hover:text-[#38BDF8] transition shrink-0"
-            title="Tester GET /api/rivers/nearby?lat=48.85&lon=2.35&radius_km=25"
+            title="Diagnostic spatial autour de Paris"
           >
             <Navigation className="w-3.5 h-3.5 text-[#38BDF8]" />
             <span>Autour de Paris</span>
@@ -408,6 +435,9 @@ export default function App() {
         {selectedRiver && (
           <RiverDossierPanel
             river={selectedRiver}
+            analysis={analysis}
+            activeSegmentId={activeSegmentId}
+            onSelectSegmentProfile={handleSelectSegmentProfile}
             basin={basin}
             segments={segments}
             stations={stations}

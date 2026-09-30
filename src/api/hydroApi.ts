@@ -9,6 +9,7 @@ import {
   TemperaturePoint,
   DataSourceItem,
   IngestionStatusResponse,
+  HydrologicalAnalysis,
 } from '../types/hydrology';
 import { getCurrentFirebaseIdToken } from '../auth/firebase';
 
@@ -50,8 +51,16 @@ export const hydroApi = {
     return res.items;
   },
 
-  async getRiverDetail(riverId: string): Promise<RiverDetail> {
-    return fetchJson<RiverDetail>(`/api/rivers/${encodeURIComponent(riverId)}`);
+  async getRiverDetail(riverId: string, segmentId?: string): Promise<RiverDetail> {
+    const q = segmentId ? `?segment_id=${encodeURIComponent(segmentId)}` : '';
+    return fetchJson<RiverDetail>(`/api/rivers/${encodeURIComponent(riverId)}${q}`);
+  },
+
+  async getRiverAnalysis(riverId: string, segmentId?: string): Promise<HydrologicalAnalysis> {
+    const q = segmentId ? `?segment_id=${encodeURIComponent(segmentId)}` : '';
+    return fetchJson<HydrologicalAnalysis>(
+      `/api/rivers/${encodeURIComponent(riverId)}/analysis${q}`
+    );
   },
 
   async getRiverSegments(riverId: string): Promise<RiverSegment[]> {
@@ -71,10 +80,12 @@ export const hydroApi = {
   async getDischargeHistory(
     riverId: string,
     days = 30,
+    segmentId?: string,
     dateFrom?: string,
     dateTo?: string
   ): Promise<DischargePoint[]> {
     const params = new URLSearchParams({ days: String(days) });
+    if (segmentId) params.set('segment_id', segmentId);
     if (dateFrom) params.set('date_from', dateFrom);
     if (dateTo) params.set('date_to', dateTo);
     const res = await fetchJson<{ series: DischargePoint[] }>(
@@ -83,9 +94,15 @@ export const hydroApi = {
     return res.series;
   },
 
-  async getRiverForecast(riverId: string, days = 10): Promise<ForecastStep[]> {
+  async getRiverForecast(
+    riverId: string,
+    days = 10,
+    segmentId?: string
+  ): Promise<ForecastStep[]> {
+    const params = new URLSearchParams({ days: String(days) });
+    if (segmentId) params.set('segment_id', segmentId);
     const res = await fetchJson<{ steps: ForecastStep[] }>(
-      `/api/rivers/${encodeURIComponent(riverId)}/forecast?days=${days}`
+      `/api/rivers/${encodeURIComponent(riverId)}/forecast?${params.toString()}`
     );
     return res.steps;
   },

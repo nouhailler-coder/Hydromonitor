@@ -1,9 +1,8 @@
 import React from 'react';
 import {
   ResponsiveContainer,
-  AreaChart,
-  Area,
   ComposedChart,
+  Area,
   Line,
   XAxis,
   YAxis,
@@ -13,34 +12,79 @@ import {
 } from 'recharts';
 import { DischargePoint, ForecastStep, TemperaturePoint } from '../types/hydrology';
 import { CategoryBadge } from '../components/CategoryBadge';
+import { formatNumberFr, formatPercentileFr, formatSignedPercentFr } from '../utils/formatters';
 
 interface DischargeChartProps {
   data: DischargePoint[];
   glofasPointId: string;
+  referenceLabel?: string;
   days: number;
   onChangeDays: (days: number) => void;
 }
 
+const CustomDischargeTooltip: React.FC<any> = ({ active, payload, label }) => {
+  if (!active || !payload || !payload.length) return null;
+  const pt: DischargePoint | undefined = payload[0]?.payload;
+  if (!pt) return null;
+
+  const isPositive = pt.deviation_pct >= 0;
+
+  return (
+    <div className="bg-[#070D17]/95 border border-slate-700 rounded-lg p-3 shadow-xl font-mono text-xs space-y-1.5 min-w-[230px]">
+      <div className="flex items-center justify-between border-b border-slate-800 pb-1">
+        <span className="font-semibold text-slate-100">{label}</span>
+        <span className="text-[10px] text-[#38BDF8]">GloFAS ERA5</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-slate-400">Débit du jour</span>
+        <span className="font-bold text-slate-50">{formatNumberFr(pt.value, 1)} m³/s</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-slate-400">Moyenne pour cette date</span>
+        <span className="text-slate-200">{formatNumberFr(pt.seasonal_mean, 1)} m³/s</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-slate-400">Écart vs normale</span>
+        <span className={`font-semibold ${isPositive ? 'text-[#38BDF8]' : 'text-amber-400'}`}>
+          {formatSignedPercentFr(pt.deviation_pct, 1)}
+        </span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-slate-400">Position historique</span>
+        <span className="text-emerald-300 font-semibold">{formatPercentileFr(pt.percentile)}</span>
+      </div>
+      <div className="pt-1 border-t border-slate-800/80 text-[10px] text-slate-400 flex items-center justify-between">
+        <span>Corridor normal P25–P75</span>
+        <span>
+          {formatNumberFr(pt.historical_q25, 0)}–{formatNumberFr(pt.historical_q75, 0)} m³/s
+        </span>
+      </div>
+    </div>
+  );
+};
+
 export const DischargeHistoryChart: React.FC<DischargeChartProps> = ({
   data,
   glofasPointId,
+  referenceLabel,
   days,
   onChangeDays,
 }) => {
-  const meanRef = data[0]?.mean_reference ?? 450;
+  const latestPoint = data[data.length - 1];
+  const seasonalRef = latestPoint?.seasonal_mean ?? 365;
 
   return (
     <div className="bg-[#0D1626]/90 border border-slate-800/90 rounded-lg p-3.5">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div>
           <div className="flex items-center gap-2">
-            <h4 className="text-xs font-mono uppercase tracking-wider text-slate-200 font-semibold">
-              DÉBIT HISTORIQUE (RÉANALYSE LISFLOOD)
+            <h4 className="text-xs font-semibold text-slate-100">
+              Trajectoire du débit vs Normale calendaire (1991–2020)
             </h4>
             <CategoryBadge category="MODELE" />
           </div>
           <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-            Source: Copernicus EWDS `cems-glofas-historical` • Point: {glofasPointId}
+            {referenceLabel ? `${referenceLabel} · ` : ''}Point {glofasPointId}
           </p>
         </div>
 
@@ -62,12 +106,12 @@ export const DischargeHistoryChart: React.FC<DischargeChartProps> = ({
         </div>
       </div>
 
-      <div className="h-48 w-full">
+      <div className="h-52 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 8, right: 10, left: -12, bottom: 0 }}>
+          <ComposedChart data={data} margin={{ top: 8, right: 10, left: -12, bottom: 0 }}>
             <defs>
               <linearGradient id="dischargeGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#0EA5E9" stopOpacity={0.38} />
+                <stop offset="5%" stopColor="#0EA5E9" stopOpacity={0.34} />
                 <stop offset="95%" stopColor="#0EA5E9" stopOpacity={0.02} />
               </linearGradient>
             </defs>
@@ -85,37 +129,60 @@ export const DischargeHistoryChart: React.FC<DischargeChartProps> = ({
               axisLine={false}
               unit=" m³/s"
             />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#070D17',
-                borderColor: '#0EA5E9',
-                borderRadius: '8px',
-                fontSize: '12px',
-                fontFamily: 'JetBrains Mono',
-              }}
-              formatter={(value: any) => [`${value} m³/s`, 'Débit GloFAS (MODÈLE)']}
+            <Tooltip content={<CustomDischargeTooltip />} />
+
+            {/* Historical P75 upper normal envelope */}
+            <Area
+              type="monotone"
+              dataKey="historical_q75"
+              stroke="none"
+              fill="#64748B"
+              fillOpacity={0.14}
+              name="Quartile historique P75"
             />
-            <ReferenceLine
-              y={meanRef}
-              stroke="#64748B"
-              strokeDasharray="4 4"
-              label={{
-                value: `Module moy. (${meanRef} m³/s)`,
-                position: 'insideTopRight',
-                fill: '#94A3B8',
-                fontSize: 10,
-              }}
-            />
+
+            {/* Actual / Reanalysis Discharge */}
             <Area
               type="monotone"
               dataKey="value"
               stroke="#38BDF8"
-              strokeWidth={2}
+              strokeWidth={2.2}
               fillOpacity={1}
               fill="url(#dischargeGrad)"
+              name="Débit actuel (m³/s)"
             />
-          </AreaChart>
+
+            {/* Historical Seasonal Mean for each date */}
+            <Line
+              type="monotone"
+              dataKey="seasonal_mean"
+              stroke="#F59E0B"
+              strokeWidth={1.6}
+              strokeDasharray="4 4"
+              dot={false}
+              name="Moyenne pour cette date"
+            />
+
+            <ReferenceLine
+              y={seasonalRef}
+              stroke="#F59E0B"
+              strokeOpacity={0.35}
+              strokeDasharray="2 2"
+            />
+          </ComposedChart>
         </ResponsiveContainer>
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-4 text-[11px] font-mono text-slate-400">
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-0.5 bg-[#38BDF8]" /> Débit observé/modélisé
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-0.5 border-b border-dashed border-amber-400" /> Moyenne pour cette date ({formatNumberFr(seasonalRef, 0)} m³/s)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-sm bg-slate-500/25" /> Enveloppe P25–P75
+        </span>
       </div>
     </div>
   );
@@ -130,18 +197,20 @@ export const EnsembleForecastChart: React.FC<ForecastChartProps> = ({
   steps,
   glofasPointId,
 }) => {
+  const seasonalRef = steps[0]?.seasonal_mean;
+
   return (
     <div className="bg-[#0D1626]/90 border border-slate-800/90 rounded-lg p-3.5">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div>
           <div className="flex items-center gap-2">
-            <h4 className="text-xs font-mono uppercase tracking-wider text-slate-200 font-semibold">
-              PRÉVISIONS D&apos;ENSEMBLE GLOFAS (J+10 • 51 MEMBRES)
+            <h4 className="text-xs font-semibold text-slate-100">
+              Prévisions d&apos;ensemble GloFAS (J+10 · 51 membres)
             </h4>
             <CategoryBadge category="PREVISION" />
           </div>
           <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-            Quantiles P10–P90, P25–P75, Médiane &amp; Contrôle • `cems-glofas-forecast` ({glofasPointId})
+            Quantiles P10–P90, P25–P75, Médiane &amp; Normale calendaire · {glofasPointId}
           </p>
         </div>
       </div>
@@ -207,6 +276,15 @@ export const EnsembleForecastChart: React.FC<ForecastChartProps> = ({
             />
             <Line
               type="monotone"
+              dataKey="seasonal_mean"
+              stroke="#F59E0B"
+              strokeWidth={1.4}
+              strokeDasharray="3 3"
+              dot={false}
+              name="Moyenne pour cette date"
+            />
+            <Line
+              type="monotone"
               dataKey="p10"
               stroke="#64748B"
               strokeWidth={1}
@@ -225,6 +303,11 @@ export const EnsembleForecastChart: React.FC<ForecastChartProps> = ({
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-0.5 border-b border-dashed border-[#38BDF8]" /> Contrôle déterministe
         </span>
+        {seasonalRef !== undefined && (
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-0.5 border-b border-dashed border-amber-400" /> Normale du jour ({formatNumberFr(seasonalRef, 0)} m³/s)
+          </span>
+        )}
         <span className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-sm bg-[#A855F7]/25" /> Enveloppe P10–P90
         </span>
@@ -240,26 +323,27 @@ interface TemperatureChartProps {
 export const TemperatureHistoryChart: React.FC<TemperatureChartProps> = ({ data }) => {
   const stationName = data[0]?.station_name || "Station Hub'Eau";
   const stationCode = data[0]?.station_code || '—';
+  const seasonalMean = data[0]?.seasonal_mean_c ?? 15.6;
 
   return (
     <div className="bg-[#0D1626]/90 border border-slate-800/90 rounded-lg p-3.5">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div>
           <div className="flex items-center gap-2">
-            <h4 className="text-xs font-mono uppercase tracking-wider text-slate-200 font-semibold">
-              TEMPÉRATURE DE L&apos;EAU IN-SITU (HUB&apos;EAU)
+            <h4 className="text-xs font-semibold text-slate-100">
+              Température de l&apos;eau in-situ vs Normale saisonnière
             </h4>
             <CategoryBadge category="OBSERVATION" />
           </div>
-          <p className="text-[11px] text-slate-400 font-mono mt-0.5 truncate max-w-md">
-            Station #{stationCode} — {stationName} (Qualification Naïades Code 1)
+          <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+            Station #{stationCode} — {stationName} · Normale du jour: {formatNumberFr(seasonalMean, 1)} °C
           </p>
         </div>
       </div>
 
-      <div className="h-48 w-full">
+      <div className="h-44 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 8, right: 10, left: -16, bottom: 0 }}>
+          <ComposedChart data={data} margin={{ top: 8, right: 10, left: -12, bottom: 0 }}>
             <defs>
               <linearGradient id="tempGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#10B981" stopOpacity={0.35} />
@@ -275,7 +359,7 @@ export const TemperatureHistoryChart: React.FC<TemperatureChartProps> = ({ data 
               minTickGap={26}
             />
             <YAxis
-              domain={['auto', 'auto']}
+              domain={['dataMin - 2', 'dataMax + 3']}
               tick={{ fill: '#94A3B8', fontSize: 10, fontFamily: 'JetBrains Mono' }}
               tickLine={false}
               axisLine={false}
@@ -289,7 +373,10 @@ export const TemperatureHistoryChart: React.FC<TemperatureChartProps> = ({ data 
                 fontSize: '12px',
                 fontFamily: 'JetBrains Mono',
               }}
-              formatter={(value: any) => [`${value} °C`, "Température Hub'Eau (OBSERVATION)"]}
+              formatter={(value: any, name: any) => [
+                `${value} °C`,
+                name === 'seasonal_mean_c' ? 'Normale pour cette date' : "Température de l'eau",
+              ]}
             />
             <ReferenceLine
               y={22}
@@ -302,6 +389,15 @@ export const TemperatureHistoryChart: React.FC<TemperatureChartProps> = ({ data 
                 fontSize: 10,
               }}
             />
+            <Line
+              type="monotone"
+              dataKey="seasonal_mean_c"
+              stroke="#94A3B8"
+              strokeWidth={1.4}
+              strokeDasharray="3 3"
+              dot={false}
+              name="seasonal_mean_c"
+            />
             <Area
               type="monotone"
               dataKey="temperature_c"
@@ -309,8 +405,9 @@ export const TemperatureHistoryChart: React.FC<TemperatureChartProps> = ({ data 
               strokeWidth={2}
               fillOpacity={1}
               fill="url(#tempGrad)"
+              name="temperature_c"
             />
-          </AreaChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     </div>

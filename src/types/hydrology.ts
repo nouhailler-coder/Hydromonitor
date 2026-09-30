@@ -1,14 +1,106 @@
 export type DataCategory = 'OBSERVATION' | 'MODELE' | 'PREVISION';
 
+export type TrendDirection = 'RISING' | 'FALLING' | 'STABLE';
+
+export type HydrologicalRegimeCode =
+  | 'HIGH_FLOW'
+  | 'ABOVE_NORMAL'
+  | 'NORMAL'
+  | 'BELOW_NORMAL'
+  | 'LOW_FLOW';
+
+export interface HistoricalQuantiles {
+  q10: number;
+  q25: number;
+  q50: number;
+  q75: number;
+  q90: number;
+}
+
+export interface SegmentAnalysisProfile {
+  segment_id: string;
+  reference_label: string; // e.g., "SEINE — PARIS"
+  station_or_node_name: string;
+  glofas_point_id: string;
+  current_discharge_m3s: number;
+  seasonal_mean_for_date_m3s: number;
+  deviation_m3s: number;
+  deviation_pct: number;
+  historical_percentile: number;
+  historical_quantiles_for_date: HistoricalQuantiles;
+  trend_direction: TrendDirection;
+  trend_days: number;
+  trend_delta_m3s: number;
+  trend_label: string;
+  regime_code: HydrologicalRegimeCode;
+  regime_label: string;
+  interpretation_summary: string;
+}
+
+export interface HydrologicalAnalysis {
+  river_id: string;
+  river_name: string;
+  reference_label: string; // e.g. "SEINE — PARIS"
+  reference_period: string; // e.g. "Climatologie 1991–2020 (30 ans)"
+  reference_date_label: string;
+  active_segment_id: string;
+  available_profiles: SegmentAnalysisProfile[];
+  discharge: {
+    current_m3s: number;
+    seasonal_mean_for_date_m3s: number;
+    mean_annual_m3s: number;
+    deviation_m3s: number;
+    deviation_pct: number;
+    historical_percentile: number;
+    historical_quantiles_for_date: HistoricalQuantiles;
+    trend_direction: TrendDirection;
+    trend_days: number;
+    trend_delta_m3s: number;
+    trend_label: string;
+    regime_code: HydrologicalRegimeCode;
+    regime_label: string;
+    category: DataCategory;
+    source_dataset: string;
+  };
+  temperature: {
+    current_c: number;
+    seasonal_mean_for_date_c: number;
+    deviation_c: number;
+    historical_percentile: number;
+    trend_label: string;
+    ecological_threshold_c: number;
+    margin_to_threshold_c: number;
+    station_name: string;
+    station_code: string;
+    category: DataCategory;
+  };
+  forecast_outlook: {
+    horizon_days: number;
+    j5_median_m3s: number;
+    j5_deviation_vs_current_pct: number;
+    j10_median_m3s: number;
+    prob_above_seasonal_mean_pct: number;
+    prob_exceed_q75_pct: number;
+    outlook_summary: string;
+  };
+  diagnostic_headline: string;
+  diagnostic_explanation: string;
+}
+
 export interface RiverSearchItem {
   id: string;
   name: string;
+  reference_label?: string;
   country: string;
   approx_position: [number, number];
   type: string;
   basin: string;
   river_code: string;
   current_discharge_m3s: number;
+  seasonal_mean_for_date_m3s?: number;
+  discharge_anomaly_pct?: number;
+  historical_percentile?: number;
+  trend_label?: string;
   current_temperature_c: number;
   last_updated_at?: string;
 }
@@ -16,6 +108,7 @@ export interface RiverSearchItem {
 export interface RiverDetail {
   id: string;
   name: string;
+  reference_label: string;
   river_code: string;
   country: string;
   type: string;
@@ -25,10 +118,21 @@ export interface RiverDetail {
   basin_area_km2: number;
   strahler_order: number;
   mean_annual_discharge_m3s: number;
+  seasonal_mean_for_date_m3s: number;
   current_discharge_m3s: number;
   discharge_anomaly_pct: number;
+  historical_percentile: number;
+  historical_quantiles_for_date: HistoricalQuantiles;
+  trend_direction: TrendDirection;
+  trend_days: number;
+  trend_delta_m3s: number;
+  trend_label: string;
+  regime_label: string;
   current_temperature_c: number;
+  seasonal_temperature_mean_c: number;
   temperature_anomaly_c: number;
+  temperature_percentile: number;
+  temperature_trend_label: string;
   glofas_point_id: string;
   glofas_grid_resolution: string;
   last_updated_at: string;
@@ -40,6 +144,7 @@ export interface RiverDetail {
   };
   segments_count?: number;
   stations_count?: number;
+  analysis?: HydrologicalAnalysis;
 }
 
 export interface RiverSegment {
@@ -102,6 +207,8 @@ export interface TemperatureStation {
   source: 'HUBEAU';
   category: 'OBSERVATION';
   latest_temperature_c: number;
+  seasonal_mean_c?: number;
+  temperature_anomaly_c?: number;
   latest_measured_at: string;
   quality_code: string;
   quality_label: string;
@@ -111,7 +218,14 @@ export interface DischargePoint {
   timestamp: string;
   date_label: string;
   value: number;
+  seasonal_mean: number;
   mean_reference: number;
+  historical_q10: number;
+  historical_q25: number;
+  historical_q75: number;
+  historical_q90: number;
+  deviation_pct: number;
+  percentile: number;
   unit: string;
   quality: string;
   source: string;
@@ -125,6 +239,7 @@ export interface ForecastStep {
   reference_time: string;
   control: number;
   median: number;
+  seasonal_mean?: number;
   p10: number;
   p25: number;
   p75: number;
@@ -141,6 +256,7 @@ export interface TemperaturePoint {
   timestamp: string;
   date_label: string;
   temperature_c: number;
+  seasonal_mean_c?: number;
   ecological_threshold_c: number;
   station_id: string;
   station_code: string;

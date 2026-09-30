@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Layers, Compass, Maximize2, Eye, EyeOff, MapPin } from 'lucide-react';
 import { hydroApi } from '../api/hydroApi';
 import { RiverDetail, TemperatureStation } from '../types/hydrology';
+
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 interface HydroMapCanvasProps {
   selectedRiver: RiverDetail | null;

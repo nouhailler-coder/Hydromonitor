@@ -33,3 +33,18 @@ export function formatNumberFr(value: number | undefined, decimals = 1): string 
     maximumFractionDigits: decimals,
   });
 }
+
+export function formatSignedPercentFr(value: number | undefined, decimals = 1): string {
+  if (value === undefined || value === null || isNaN(value)) return '—';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toLocaleString('fr-FR', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })} %`;
+}
+
+export function formatPercentileFr(percentile: number | undefined): string {
+  if (percentile === undefined || percentile === null || isNaN(percentile)) return '—';
+  const rounded = Math.round(percentile);
+  return rounded === 1 ? '1er percentile' : `${rounded}e percentile`;
+}

@@ -1,4 +1,13 @@
-export type DataCategory = 'OBSERVATION' | 'MODELE' | 'PREVISION';
+import {
+  DataCategory,
+  HistoricalQuantiles,
+  HydrologicalAnalysis,
+  HydrologicalRegimeCode,
+  SegmentAnalysisProfile,
+  TrendDirection,
+} from '../types/hydrology';
+
+export type { DataCategory };
 
 export interface GeoJSONGeometry {
   type: 'MultiLineString' | 'LineString' | 'MultiPolygon' | 'Polygon' | 'Point';
@@ -63,6 +72,8 @@ export interface TemperatureStationRecord {
   source: 'HUBEAU';
   category: 'OBSERVATION';
   latest_temperature_c: number;
+  seasonal_mean_c: number;
+  temperature_anomaly_c: number;
   latest_measured_at: string;
   quality_code: string;
   quality_label: string;
@@ -71,6 +82,7 @@ export interface TemperatureStationRecord {
 export interface RiverRecord {
   id: string;
   name: string;
+  reference_label: string;
   river_code: string;
   country: string;
   type: string;
@@ -80,10 +92,21 @@ export interface RiverRecord {
   basin_area_km2: number;
   strahler_order: number;
   mean_annual_discharge_m3s: number;
+  seasonal_mean_for_date_m3s: number;
   current_discharge_m3s: number;
   discharge_anomaly_pct: number;
+  historical_percentile: number;
+  historical_quantiles_for_date: HistoricalQuantiles;
+  trend_direction: TrendDirection;
+  trend_days: number;
+  trend_delta_m3s: number;
+  trend_label: string;
+  regime_label: string;
   current_temperature_c: number;
+  seasonal_temperature_mean_c: number;
   temperature_anomaly_c: number;
+  temperature_percentile: number;
+  temperature_trend_label: string;
   glofas_point_id: string;
   glofas_grid_resolution: string;
   last_updated_at: string;
@@ -102,6 +125,7 @@ export const RIVERS_DATA: RiverRecord[] = [
   {
     id: 'river-seine',
     name: 'La Seine',
+    reference_label: 'SEINE — PARIS',
     river_code: 'FR-SEINE-001',
     country: 'France',
     type: 'Fleuve principal (Strahler Ordre 7)',
@@ -111,10 +135,27 @@ export const RIVERS_DATA: RiverRecord[] = [
     basin_area_km2: 78650,
     strahler_order: 7,
     mean_annual_discharge_m3s: 462.0,
-    current_discharge_m3s: 486.4,
-    discharge_anomaly_pct: 5.3,
+    seasonal_mean_for_date_m3s: 365.0,
+    current_discharge_m3s: 425.0,
+    discharge_anomaly_pct: 16.4,
+    historical_percentile: 72,
+    historical_quantiles_for_date: {
+      q10: 195.0,
+      q25: 275.0,
+      q50: 355.0,
+      q75: 440.0,
+      q90: 560.0,
+    },
+    trend_direction: 'RISING',
+    trend_days: 3,
+    trend_delta_m3s: 42.0,
+    trend_label: '↗ en hausse depuis 3 jours',
+    regime_label: 'Écoulement soutenu — au-dessus de la normale saisonnière (72e percentile)',
     current_temperature_c: 16.4,
-    temperature_anomaly_c: 0.6,
+    seasonal_temperature_mean_c: 15.6,
+    temperature_anomaly_c: 0.8,
+    temperature_percentile: 68,
+    temperature_trend_label: '↗ +0,4 °C depuis 48h',
     glofas_point_id: 'GLOFAS-EU-SEINE-PARIS-042',
     glofas_grid_resolution: '0.05° (~5 km) — GloFAS v5.0 LISFLOOD',
     last_updated_at: minsAgo(12),
@@ -147,6 +188,7 @@ export const RIVERS_DATA: RiverRecord[] = [
   {
     id: 'river-loire',
     name: 'La Loire',
+    reference_label: 'LOIRE — ORLÉANS',
     river_code: 'FR-LOIRE-001',
     country: 'France',
     type: 'Fleuve principal (Strahler Ordre 8)',
@@ -156,10 +198,27 @@ export const RIVERS_DATA: RiverRecord[] = [
     basin_area_km2: 117480,
     strahler_order: 8,
     mean_annual_discharge_m3s: 865.0,
-    current_discharge_m3s: 842.0,
-    discharge_anomaly_pct: -2.7,
+    seasonal_mean_for_date_m3s: 380.0,
+    current_discharge_m3s: 310.0,
+    discharge_anomaly_pct: -18.4,
+    historical_percentile: 28,
+    historical_quantiles_for_date: {
+      q10: 190.0,
+      q25: 295.0,
+      q50: 375.0,
+      q75: 485.0,
+      q90: 640.0,
+    },
+    trend_direction: 'FALLING',
+    trend_days: 4,
+    trend_delta_m3s: -36.0,
+    trend_label: '↘ en baisse depuis 4 jours',
+    regime_label: 'Étiage modéré — sous la moyenne saisonnière (28e percentile)',
     current_temperature_c: 17.8,
-    temperature_anomaly_c: 0.9,
+    seasonal_temperature_mean_c: 16.7,
+    temperature_anomaly_c: 1.1,
+    temperature_percentile: 76,
+    temperature_trend_label: '↗ +0,6 °C depuis 3 jours',
     glofas_point_id: 'GLOFAS-EU-LOIRE-ORLEANS-088',
     glofas_grid_resolution: '0.05° (~5 km) — GloFAS v5.0 LISFLOOD',
     last_updated_at: minsAgo(18),
@@ -189,6 +248,7 @@ export const RIVERS_DATA: RiverRecord[] = [
   {
     id: 'river-rhone',
     name: 'Le Rhône',
+    reference_label: 'RHÔNE — BEAUCAIRE',
     river_code: 'FR-RHONE-001',
     country: 'France',
     type: 'Fleuve principal (Strahler Ordre 8)',
@@ -198,10 +258,27 @@ export const RIVERS_DATA: RiverRecord[] = [
     basin_area_km2: 98000,
     strahler_order: 8,
     mean_annual_discharge_m3s: 1610.0,
+    seasonal_mean_for_date_m3s: 1485.0,
     current_discharge_m3s: 1690.5,
-    discharge_anomaly_pct: 5.0,
+    discharge_anomaly_pct: 13.8,
+    historical_percentile: 69,
+    historical_quantiles_for_date: {
+      q10: 940.0,
+      q25: 1180.0,
+      q50: 1460.0,
+      q75: 1760.0,
+      q90: 2150.0,
+    },
+    trend_direction: 'RISING',
+    trend_days: 2,
+    trend_delta_m3s: 115.0,
+    trend_label: '↗ en hausse depuis 2 jours',
+    regime_label: 'Régime nivo-pluvial actif — supérieur à la normale saisonnière (69e percentile)',
     current_temperature_c: 15.9,
+    seasonal_temperature_mean_c: 15.6,
     temperature_anomaly_c: 0.3,
+    temperature_percentile: 56,
+    temperature_trend_label: '→ stable depuis 3 jours',
     glofas_point_id: 'GLOFAS-EU-RHONE-BEAUCAIRE-114',
     glofas_grid_resolution: '0.05° (~5 km) — GloFAS v5.0 LISFLOOD',
     last_updated_at: minsAgo(21),
@@ -228,20 +305,186 @@ export const RIVERS_DATA: RiverRecord[] = [
   },
 ];
 
+// Multi-station / multi-segment analytical profiles per river
+export const SEGMENT_ANALYSIS_PROFILES: Record<string, SegmentAnalysisProfile[]> = {
+  'river-seine': [
+    {
+      segment_id: 'seg-seine-paris-20410199',
+      reference_label: 'SEINE — PARIS',
+      station_or_node_name: "Paris (Pont d'Austerlitz / Alma)",
+      glofas_point_id: 'GLOFAS-EU-SEINE-PARIS-042',
+      current_discharge_m3s: 425.0,
+      seasonal_mean_for_date_m3s: 365.0,
+      deviation_m3s: 60.0,
+      deviation_pct: 16.4,
+      historical_percentile: 72,
+      historical_quantiles_for_date: {
+        q10: 195.0,
+        q25: 275.0,
+        q50: 355.0,
+        q75: 440.0,
+        q90: 560.0,
+      },
+      trend_direction: 'RISING',
+      trend_days: 3,
+      trend_delta_m3s: 42.0,
+      trend_label: '↗ en hausse depuis 3 jours',
+      regime_code: 'ABOVE_NORMAL',
+      regime_label: 'Écoulement soutenu (haut du corridor normal P25–P75)',
+      interpretation_summary:
+        "À Paris, le débit de la Seine (425 m³/s) dépasse de +16,4 % la moyenne historique pour cette date (365 m³/s), se situant au 72e percentile de la climatologie 1991–2020 avec une hausse continue depuis 3 jours (+42 m³/s) liée aux apports amont de l'Yonne et de la Marne.",
+    },
+    {
+      segment_id: 'seg-seine-amont-20410101',
+      reference_label: 'SEINE — TROYES',
+      station_or_node_name: 'Troyes / Montereau (Bassin Amont)',
+      glofas_point_id: 'GLOFAS-EU-SEINE-TROYES-019',
+      current_discharge_m3s: 92.5,
+      seasonal_mean_for_date_m3s: 78.0,
+      deviation_m3s: 14.5,
+      deviation_pct: 18.6,
+      historical_percentile: 75,
+      historical_quantiles_for_date: {
+        q10: 42.0,
+        q25: 58.0,
+        q50: 76.0,
+        q75: 92.0,
+        q90: 118.0,
+      },
+      trend_direction: 'RISING',
+      trend_days: 4,
+      trend_delta_m3s: 11.2,
+      trend_label: '↗ en hausse depuis 4 jours',
+      regime_code: 'HIGH_FLOW',
+      regime_label: 'Régime humide — quartile supérieur (75e percentile)',
+      interpretation_summary:
+        'Sur le tronçon amont à Troyes, le débit atteint 92,5 m³/s contre 78,0 m³/s en moyenne calendaire (+18,6 %, 75e percentile), alimentant l’onde de hausse observée vers l’agglomération parisienne.',
+    },
+    {
+      segment_id: 'seg-seine-aval-20410285',
+      reference_label: 'SEINE — POSES / ROUEN',
+      station_or_node_name: 'Barrage de Poses / Rouen (Seine Normande)',
+      glofas_point_id: 'GLOFAS-EU-SEINE-POSES-058',
+      current_discharge_m3s: 548.0,
+      seasonal_mean_for_date_m3s: 480.0,
+      deviation_m3s: 68.0,
+      deviation_pct: 14.2,
+      historical_percentile: 68,
+      historical_quantiles_for_date: {
+        q10: 265.0,
+        q25: 360.0,
+        q50: 470.0,
+        q75: 585.0,
+        q90: 740.0,
+      },
+      trend_direction: 'RISING',
+      trend_days: 2,
+      trend_delta_m3s: 34.0,
+      trend_label: '↗ en hausse depuis 2 jours',
+      regime_code: 'NORMAL',
+      regime_label: 'Écoulement normal à soutenu (68e percentile)',
+      interpretation_summary:
+        "En aval de la confluence de l'Oise à Poses, le débit (548 m³/s) est supérieur de +14,2 % à la moyenne pour cette date (480 m³/s), en hausse depuis 2 jours à mesure que l'onde parisienne se propage vers l'estuaire.",
+    },
+  ],
+  'river-loire': [
+    {
+      segment_id: 'seg-loire-moyenne-20420512',
+      reference_label: 'LOIRE — ORLÉANS',
+      station_or_node_name: 'Orléans / Sandillon (Loire Moyenne)',
+      glofas_point_id: 'GLOFAS-EU-LOIRE-ORLEANS-088',
+      current_discharge_m3s: 310.0,
+      seasonal_mean_for_date_m3s: 380.0,
+      deviation_m3s: -70.0,
+      deviation_pct: -18.4,
+      historical_percentile: 28,
+      historical_quantiles_for_date: {
+        q10: 190.0,
+        q25: 295.0,
+        q50: 375.0,
+        q75: 485.0,
+        q90: 640.0,
+      },
+      trend_direction: 'FALLING',
+      trend_days: 4,
+      trend_delta_m3s: -36.0,
+      trend_label: '↘ en baisse depuis 4 jours',
+      regime_code: 'BELOW_NORMAL',
+      regime_label: 'Sous la normale saisonnière (28e percentile)',
+      interpretation_summary:
+        "À Orléans, la Loire présente un débit de 310 m³/s, inférieur de -18,4 % à la moyenne historique pour cette date (380 m³/s). Située au 28e percentile, elle poursuit un tarissement régulier depuis 4 jours (-36 m³/s).",
+    },
+    {
+      segment_id: 'seg-loire-aval-20420680',
+      reference_label: 'LOIRE — MONTJEAN / NANTES',
+      station_or_node_name: 'Montjean-sur-Loire (Basse Loire)',
+      glofas_point_id: 'GLOFAS-EU-LOIRE-MONTJEAN-094',
+      current_discharge_m3s: 695.0,
+      seasonal_mean_for_date_m3s: 810.0,
+      deviation_m3s: -115.0,
+      deviation_pct: -14.2,
+      historical_percentile: 33,
+      historical_quantiles_for_date: {
+        q10: 420.0,
+        q25: 610.0,
+        q50: 795.0,
+        q75: 980.0,
+        q90: 1290.0,
+      },
+      trend_direction: 'FALLING',
+      trend_days: 3,
+      trend_delta_m3s: -48.0,
+      trend_label: '↘ en baisse depuis 3 jours',
+      regime_code: 'NORMAL',
+      regime_label: 'Tiers inférieur du corridor normal (33e percentile)',
+      interpretation_summary:
+        'À Montjean-sur-Loire, les apports de la Vienne et de la Maine atténuent le déficit amont : le débit (695 m³/s) se situe à -14,2 % sous la moyenne de saison (810 m³/s, 33e percentile).',
+    },
+  ],
+  'river-rhone': [
+    {
+      segment_id: 'seg-rhone-aval-20430944',
+      reference_label: 'RHÔNE — BEAUCAIRE',
+      station_or_node_name: 'Beaucaire / Vallabrègues (Rhône Aval)',
+      glofas_point_id: 'GLOFAS-EU-RHONE-BEAUCAIRE-114',
+      current_discharge_m3s: 1690.5,
+      seasonal_mean_for_date_m3s: 1485.0,
+      deviation_m3s: 205.5,
+      deviation_pct: 13.8,
+      historical_percentile: 69,
+      historical_quantiles_for_date: {
+        q10: 940.0,
+        q25: 1180.0,
+        q50: 1460.0,
+        q75: 1760.0,
+        q90: 2150.0,
+      },
+      trend_direction: 'RISING',
+      trend_days: 2,
+      trend_delta_m3s: 115.0,
+      trend_label: '↗ en hausse depuis 2 jours',
+      regime_code: 'ABOVE_NORMAL',
+      regime_label: 'Écoulement soutenu (69e percentile)',
+      interpretation_summary:
+        "À Beaucaire, le Rhône affiche un débit de 1 690,5 m³/s contre 1 485 m³/s en moyenne historique pour cette date (+13,8 %, 69e percentile), en hausse depuis 2 jours (+115 m³/s) suite aux apports alpins et de la Saône.",
+    },
+  ],
+};
+
 export const RIVER_SEGMENTS_DATA: RiverSegmentRecord[] = [
   {
     id: 'seg-seine-amont-20410101',
     hydro_rivers_id: 20410101,
     river_id: 'river-seine',
     name: 'La Seine',
-    segment_label: 'Seine Amont (Source → Montereau)',
+    segment_label: 'Seine Amont (Source → Troyes → Montereau)',
     country: 'France',
     river_order: 5,
     length_km: 224.5,
     distance_from_source_km: 0.0,
     distance_to_mouth_km: 552.5,
     upstream_area_km2: 10250.0,
-    mean_discharge_m3s: 84.2,
+    mean_discharge_m3s: 78.0,
     geometry: {
       type: 'MultiLineString',
       coordinates: [
@@ -271,14 +514,14 @@ export const RIVER_SEGMENTS_DATA: RiverSegmentRecord[] = [
     hydro_rivers_id: 20410199,
     river_id: 'river-seine',
     name: 'La Seine',
-    segment_label: 'Seine Moyenne & Agglomération Parisienne (Montereau → Conflans)',
+    segment_label: 'SEINE — PARIS (Montereau → Paris → Conflans)',
     country: 'France',
     river_order: 7,
     length_km: 168.0,
     distance_from_source_km: 224.5,
     distance_to_mouth_km: 384.5,
     upstream_area_km2: 44320.0,
-    mean_discharge_m3s: 328.5,
+    mean_discharge_m3s: 365.0,
     geometry: {
       type: 'MultiLineString',
       coordinates: [
@@ -317,7 +560,7 @@ export const RIVER_SEGMENTS_DATA: RiverSegmentRecord[] = [
     distance_from_source_km: 392.5,
     distance_to_mouth_km: 0.0,
     upstream_area_km2: 78650.0,
-    mean_discharge_m3s: 486.4,
+    mean_discharge_m3s: 480.0,
     geometry: {
       type: 'MultiLineString',
       coordinates: [
@@ -348,14 +591,14 @@ export const RIVER_SEGMENTS_DATA: RiverSegmentRecord[] = [
     hydro_rivers_id: 20420512,
     river_id: 'river-loire',
     name: 'La Loire',
-    segment_label: 'Loire Moyenne (Nevers → Orléans → Tours)',
+    segment_label: 'LOIRE — ORLÉANS (Nevers → Orléans → Tours)',
     country: 'France',
     river_order: 8,
     length_km: 395.0,
     distance_from_source_km: 345.0,
     distance_to_mouth_km: 266.0,
     upstream_area_km2: 46890.0,
-    mean_discharge_m3s: 412.0,
+    mean_discharge_m3s: 380.0,
     geometry: {
       type: 'MultiLineString',
       coordinates: [
@@ -392,7 +635,7 @@ export const RIVER_SEGMENTS_DATA: RiverSegmentRecord[] = [
     distance_from_source_km: 740.0,
     distance_to_mouth_km: 0.0,
     upstream_area_km2: 117480.0,
-    mean_discharge_m3s: 842.0,
+    mean_discharge_m3s: 810.0,
     geometry: {
       type: 'MultiLineString',
       coordinates: [
@@ -422,14 +665,14 @@ export const RIVER_SEGMENTS_DATA: RiverSegmentRecord[] = [
     hydro_rivers_id: 20430944,
     river_id: 'river-rhone',
     name: 'Le Rhône',
-    segment_label: 'Rhône Médian & Aval (Lyon → Valence → Beaucaire → Camargue)',
+    segment_label: 'RHÔNE — BEAUCAIRE (Lyon → Valence → Beaucaire → Camargue)',
     country: 'France',
     river_order: 8,
     length_km: 330.0,
     distance_from_source_km: 482.0,
     distance_to_mouth_km: 0.0,
     upstream_area_km2: 95590.0,
-    mean_discharge_m3s: 1690.5,
+    mean_discharge_m3s: 1485.0,
     geometry: {
       type: 'MultiLineString',
       coordinates: [
@@ -559,7 +802,7 @@ export const TEMPERATURE_STATIONS_DATA: TemperatureStationRecord[] = [
   {
     id: 'hubeau-st-03174000',
     station_code: '03174000',
-    name: 'LA SEINE À PARIS 12E [PONT D\'AUSTERLITZ]',
+    name: "LA SEINE À PARIS 12E [PONT D'AUSTERLITZ]",
     river_id: 'river-seine',
     river_segment_id: 'seg-seine-paris-20410199',
     river_name: 'La Seine',
@@ -573,6 +816,8 @@ export const TEMPERATURE_STATIONS_DATA: TemperatureStationRecord[] = [
     source: 'HUBEAU',
     category: 'OBSERVATION',
     latest_temperature_c: 16.4,
+    seasonal_mean_c: 15.6,
+    temperature_anomaly_c: 0.8,
     latest_measured_at: minsAgo(14),
     quality_code: '1',
     quality_label: 'Qualification Correcte (Naïades Code 1)',
@@ -594,6 +839,8 @@ export const TEMPERATURE_STATIONS_DATA: TemperatureStationRecord[] = [
     source: 'HUBEAU',
     category: 'OBSERVATION',
     latest_temperature_c: 16.1,
+    seasonal_mean_c: 15.4,
+    temperature_anomaly_c: 0.7,
     latest_measured_at: minsAgo(26),
     quality_code: '1',
     quality_label: 'Qualification Correcte (Naïades Code 1)',
@@ -615,6 +862,8 @@ export const TEMPERATURE_STATIONS_DATA: TemperatureStationRecord[] = [
     source: 'HUBEAU',
     category: 'OBSERVATION',
     latest_temperature_c: 15.8,
+    seasonal_mean_c: 15.2,
+    temperature_anomaly_c: 0.6,
     latest_measured_at: minsAgo(19),
     quality_code: '1',
     quality_label: 'Qualification Correcte (Naïades Code 1)',
@@ -636,6 +885,8 @@ export const TEMPERATURE_STATIONS_DATA: TemperatureStationRecord[] = [
     source: 'HUBEAU',
     category: 'OBSERVATION',
     latest_temperature_c: 15.2,
+    seasonal_mean_c: 14.7,
+    temperature_anomaly_c: 0.5,
     latest_measured_at: minsAgo(32),
     quality_code: '1',
     quality_label: 'Qualification Correcte (Naïades Code 1)',
@@ -658,6 +909,8 @@ export const TEMPERATURE_STATIONS_DATA: TemperatureStationRecord[] = [
     source: 'HUBEAU',
     category: 'OBSERVATION',
     latest_temperature_c: 17.8,
+    seasonal_mean_c: 16.7,
+    temperature_anomaly_c: 1.1,
     latest_measured_at: minsAgo(18),
     quality_code: '1',
     quality_label: 'Qualification Correcte (Naïades Code 1)',
@@ -679,6 +932,8 @@ export const TEMPERATURE_STATIONS_DATA: TemperatureStationRecord[] = [
     source: 'HUBEAU',
     category: 'OBSERVATION',
     latest_temperature_c: 18.1,
+    seasonal_mean_c: 16.9,
+    temperature_anomaly_c: 1.2,
     latest_measured_at: minsAgo(24),
     quality_code: '1',
     quality_label: 'Qualification Correcte (Naïades Code 1)',
@@ -700,6 +955,8 @@ export const TEMPERATURE_STATIONS_DATA: TemperatureStationRecord[] = [
     source: 'HUBEAU',
     category: 'OBSERVATION',
     latest_temperature_c: 17.6,
+    seasonal_mean_c: 16.8,
+    temperature_anomaly_c: 0.8,
     latest_measured_at: minsAgo(29),
     quality_code: '1',
     quality_label: 'Qualification Correcte (Naïades Code 1)',
@@ -722,6 +979,8 @@ export const TEMPERATURE_STATIONS_DATA: TemperatureStationRecord[] = [
     source: 'HUBEAU',
     category: 'OBSERVATION',
     latest_temperature_c: 15.4,
+    seasonal_mean_c: 15.1,
+    temperature_anomaly_c: 0.3,
     latest_measured_at: minsAgo(21),
     quality_code: '1',
     quality_label: 'Qualification Correcte (Naïades Code 1)',
@@ -743,6 +1002,8 @@ export const TEMPERATURE_STATIONS_DATA: TemperatureStationRecord[] = [
     source: 'HUBEAU',
     category: 'OBSERVATION',
     latest_temperature_c: 15.9,
+    seasonal_mean_c: 15.6,
+    temperature_anomaly_c: 0.3,
     latest_measured_at: minsAgo(25),
     quality_code: '1',
     quality_label: 'Qualification Correcte (Naïades Code 1)',
@@ -764,20 +1025,87 @@ export const TEMPERATURE_STATIONS_DATA: TemperatureStationRecord[] = [
     source: 'HUBEAU',
     category: 'OBSERVATION',
     latest_temperature_c: 16.5,
+    seasonal_mean_c: 16.1,
+    temperature_anomaly_c: 0.4,
     latest_measured_at: minsAgo(22),
     quality_code: '1',
     quality_label: 'Qualification Correcte (Naïades Code 1)',
   },
 ];
 
-export function generateDischargeHistory(riverId: string, days = 30) {
+// Interpolate empirical percentile from historical quantiles
+function estimatePercentileFromQuantiles(value: number, q: HistoricalQuantiles): number {
+  if (value <= q.q10) return Math.max(2, Math.round((value / Math.max(1, q.q10)) * 10));
+  if (value <= q.q25) {
+    return Math.round(10 + ((value - q.q10) / Math.max(1, q.q25 - q.q10)) * 15);
+  }
+  if (value <= q.q50) {
+    return Math.round(25 + ((value - q.q25) / Math.max(1, q.q50 - q.q25)) * 25);
+  }
+  if (value <= q.q75) {
+    return Math.round(50 + ((value - q.q50) / Math.max(1, q.q75 - q.q50)) * 25);
+  }
+  if (value <= q.q90) {
+    return Math.round(75 + ((value - q.q75) / Math.max(1, q.q90 - q.q75)) * 15);
+  }
+  return Math.min(99, Math.round(90 + ((value - q.q90) / Math.max(1, q.q90 * 0.35)) * 9));
+}
+
+export function generateDischargeHistory(riverId: string, days = 30, segmentId?: string) {
   const river = RIVERS_DATA.find((r) => r.id === riverId) ?? RIVERS_DATA[0];
-  const base = river.current_discharge_m3s;
+  const profiles = SEGMENT_ANALYSIS_PROFILES[river.id] || [];
+  const profile =
+    (segmentId ? profiles.find((p) => p.segment_id === segmentId) : undefined) || profiles[0];
+
+  const currentVal = profile ? profile.current_discharge_m3s : river.current_discharge_m3s;
+  const seasonalBase = profile
+    ? profile.seasonal_mean_for_date_m3s
+    : river.seasonal_mean_for_date_m3s;
+  const qToday = profile
+    ? profile.historical_quantiles_for_date
+    : river.historical_quantiles_for_date;
+  const trendDir = profile ? profile.trend_direction : river.trend_direction;
+  const trendDays = profile ? profile.trend_days : river.trend_days;
+  const trendDelta = profile ? profile.trend_delta_m3s : river.trend_delta_m3s;
+
   const series = [];
   for (let i = days; i >= 0; i--) {
-    const wave1 = Math.sin((i / 6) * Math.PI) * (base * 0.11);
-    const wave2 = Math.cos((i / 3.5) * Math.PI) * (base * 0.04);
-    const val = Math.max(20, Number((base + wave1 + wave2).toFixed(1)));
+    // Seasonal normal curve gently evolving towards today's seasonal normal
+    const seasonalDrift = Math.sin((i / 18) * Math.PI) * (seasonalBase * 0.04);
+    const seasonalMeanDay = Number((seasonalBase - seasonalDrift).toFixed(1));
+    const scaleRatio = seasonalMeanDay / Math.max(1, seasonalBase);
+
+    const q10 = Number((qToday.q10 * scaleRatio).toFixed(1));
+    const q25 = Number((qToday.q25 * scaleRatio).toFixed(1));
+    const q50 = Number((qToday.q50 * scaleRatio).toFixed(1));
+    const q75 = Number((qToday.q75 * scaleRatio).toFixed(1));
+    const q90 = Number((qToday.q90 * scaleRatio).toFixed(1));
+
+    let val: number;
+    if (i === 0) {
+      val = currentVal;
+    } else if (i <= trendDays) {
+      // Strictly monotonic over the last `trendDays` to match `trend_label` (e.g. ↗ en hausse depuis 3 jours)
+      const stepFraction = i / trendDays;
+      val = Number((currentVal - trendDelta * stepFraction).toFixed(1));
+    } else {
+      const startOfTrendVal = currentVal - trendDelta;
+      const daysBeforeTrend = i - trendDays;
+      const wave1 = Math.sin((daysBeforeTrend / 5.5) * Math.PI) * (seasonalBase * 0.09);
+      const wave2 = Math.cos((daysBeforeTrend / 3.2) * Math.PI) * (seasonalBase * 0.035);
+      const anchor =
+        trendDir === 'RISING'
+          ? startOfTrendVal + seasonalBase * 0.02
+          : startOfTrendVal - seasonalBase * 0.02;
+      val = Math.max(15, Number((anchor + wave1 + wave2).toFixed(1)));
+    }
+
+    const deviationPct = Number((((val - seasonalMeanDay) / seasonalMeanDay) * 100).toFixed(1));
+    const percentile =
+      i === 0 && profile
+        ? profile.historical_percentile
+        : estimatePercentileFromQuantiles(val, { q10, q25, q50, q75, q90 });
+
     series.push({
       timestamp: daysAgo(i),
       date_label: new Date(now - i * 86_400_000).toLocaleDateString('fr-FR', {
@@ -785,7 +1113,14 @@ export function generateDischargeHistory(riverId: string, days = 30) {
         month: 'short',
       }),
       value: val,
+      seasonal_mean: seasonalMeanDay,
       mean_reference: river.mean_annual_discharge_m3s,
+      historical_q10: q10,
+      historical_q25: q25,
+      historical_q75: q75,
+      historical_q90: q90,
+      deviation_pct: deviationPct,
+      percentile,
       unit: 'm³/s',
       quality: i <= 3 ? 'INTERMEDIATE_ERA5T' : 'CONSOLIDATED_ERA5',
       source: 'GLOFAS_EWDS_V5',
@@ -796,15 +1131,22 @@ export function generateDischargeHistory(riverId: string, days = 30) {
   return series;
 }
 
-export function generateEnsembleForecast(riverId: string, horizonDays = 10) {
+export function generateEnsembleForecast(riverId: string, horizonDays = 10, segmentId?: string) {
   const river = RIVERS_DATA.find((r) => r.id === riverId) ?? RIVERS_DATA[0];
-  const base = river.current_discharge_m3s;
+  const profiles = SEGMENT_ANALYSIS_PROFILES[river.id] || [];
+  const profile =
+    (segmentId ? profiles.find((p) => p.segment_id === segmentId) : undefined) || profiles[0];
+
+  const base = profile ? profile.current_discharge_m3s : river.current_discharge_m3s;
+  const seasonalMean = profile
+    ? profile.seasonal_mean_for_date_m3s
+    : river.seasonal_mean_for_date_m3s;
   const refTime = hoursAgo(4);
   const steps = [];
   for (let d = 0; d <= horizonDays; d++) {
-    const drift = Math.sin((d / 4) * Math.PI) * (base * 0.09) + d * (base * 0.008);
-    const median = Number((base + drift).toFixed(1));
-    const control = Number((median + Math.cos(d) * (base * 0.025)).toFixed(1));
+    const drift = Math.sin((d / 4) * Math.PI) * (base * 0.07) + d * (base * 0.005);
+    const median = d === 0 ? base : Number((base + drift).toFixed(1));
+    const control = d === 0 ? base : Number((median + Math.cos(d) * (base * 0.022)).toFixed(1));
     const spread25 = base * (0.02 + d * 0.012);
     const spread90 = base * (0.045 + d * 0.024);
 
@@ -820,6 +1162,7 @@ export function generateEnsembleForecast(riverId: string, horizonDays = 10) {
       reference_time: refTime,
       control,
       median,
+      seasonal_mean: Number((seasonalMean + d * (seasonalMean * 0.002)).toFixed(1)),
       p10: Number(Math.max(10, median - spread90).toFixed(1)),
       p25: Number(Math.max(15, median - spread25).toFixed(1)),
       p75: Number((median + spread25).toFixed(1)),
@@ -827,11 +1170,11 @@ export function generateEnsembleForecast(riverId: string, horizonDays = 10) {
       p10_p90_range: [
         Number(Math.max(10, median - spread90).toFixed(1)),
         Number((median + spread90).toFixed(1)),
-      ],
+      ] as [number, number],
       p25_p75_range: [
         Number(Math.max(15, median - spread25).toFixed(1)),
         Number((median + spread25).toFixed(1)),
-      ],
+      ] as [number, number],
       unit: 'm³/s',
       source: 'GLOFAS_EWDS_V5',
       dataset: 'cems-glofas-forecast',
@@ -849,13 +1192,17 @@ export function generateTemperatureHistory(riverId: string, stationId?: string, 
     TEMPERATURE_STATIONS_DATA[0];
 
   const baseTemp = targetStation.latest_temperature_c;
+  const seasonalTemp = targetStation.seasonal_mean_c;
   const points = [];
   const totalSteps = days * 4; // 1 point every 6h
   for (let s = totalSteps; s >= 0; s--) {
     const ts = new Date(now - s * 6 * 3_600_000);
-    const diurnal = Math.sin(((ts.getUTCHours() - 6) / 24) * 2 * Math.PI) * 0.65;
-    const synoptic = Math.cos((s / 12) * Math.PI) * 0.9;
-    const temp = Number((baseTemp + diurnal + synoptic - (s / totalSteps) * 0.4).toFixed(2));
+    const diurnal = Math.sin(((ts.getUTCHours() - 6) / 24) * 2 * Math.PI) * 0.55;
+    const synoptic = Math.cos((s / 12) * Math.PI) * 0.75;
+    const temp =
+      s === 0
+        ? baseTemp
+        : Number((baseTemp + diurnal + synoptic - (s / totalSteps) * 0.4).toFixed(2));
     points.push({
       timestamp: ts.toISOString(),
       date_label: ts.toLocaleDateString('fr-FR', {
@@ -865,6 +1212,7 @@ export function generateTemperatureHistory(riverId: string, stationId?: string, 
         minute: '2-digit',
       }),
       temperature_c: temp,
+      seasonal_mean_c: seasonalTemp,
       ecological_threshold_c: 22.0,
       station_id: targetStation.id,
       station_code: targetStation.station_code,
@@ -875,6 +1223,108 @@ export function generateTemperatureHistory(riverId: string, stationId?: string, 
     });
   }
   return points;
+}
+
+// Core Hydrological Analysis Engine: contextualizes current state vs 30-year historical behavior
+export function computeHydrologicalAnalysis(
+  riverId: string,
+  segmentId?: string
+): HydrologicalAnalysis {
+  const river = RIVERS_DATA.find((r) => r.id === riverId) ?? RIVERS_DATA[0];
+  const profiles = SEGMENT_ANALYSIS_PROFILES[river.id] || [];
+  const activeProfile =
+    (segmentId ? profiles.find((p) => p.segment_id === segmentId) : undefined) || profiles[0];
+
+  const stations = TEMPERATURE_STATIONS_DATA.filter((s) => s.river_id === river.id);
+  const matchingStation =
+    stations.find((s) => s.river_segment_id === activeProfile.segment_id) || stations[0];
+
+  const fcSteps = generateEnsembleForecast(river.id, 10, activeProfile.segment_id);
+  const j5 = fcSteps[Math.min(5, fcSteps.length - 1)];
+  const j10 = fcSteps[fcSteps.length - 1];
+  const j5DevPct = Number(
+    (
+      ((j5.median - activeProfile.current_discharge_m3s) / activeProfile.current_discharge_m3s) *
+      100
+    ).toFixed(1)
+  );
+
+  // Probability of remaining above seasonal normal based on ensemble spread at J+5
+  const probAboveMean =
+    j5.p25 >= activeProfile.seasonal_mean_for_date_m3s
+      ? 84
+      : j5.median >= activeProfile.seasonal_mean_for_date_m3s
+      ? 64
+      : 26;
+
+  const probExceedQ75 =
+    j5.median >= activeProfile.historical_quantiles_for_date.q75
+      ? 62
+      : j5.p75 >= activeProfile.historical_quantiles_for_date.q75
+      ? 38
+      : 14;
+
+  const todayLabel = new Date(now).toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+  });
+
+  const outlookSummary =
+    j5DevPct >= 2
+      ? `Poursuite probable de la hausse à J+5 (médiane ${j5.median} m³/s, soit +${j5DevPct} % vs actuel) avec ${probAboveMean} % des membres GloFAS maintenus au-dessus de la normale saisonnière.`
+      : j5DevPct <= -2
+      ? `Amorçage d'une décrue modérée d'ici J+5 (médiane ${j5.median} m³/s, ${j5DevPct} % vs actuel).`
+      : `Stabilisation attendue autour de ${j5.median} m³/s à J+5 (${probAboveMean} % des scénarios au-dessus de la moyenne calendaire).`;
+
+  return {
+    river_id: river.id,
+    river_name: river.name,
+    reference_label: activeProfile.reference_label,
+    reference_period: 'Climatologie GloFAS ERA5 1991–2020 (30 ans)',
+    reference_date_label: todayLabel,
+    active_segment_id: activeProfile.segment_id,
+    available_profiles: profiles,
+    discharge: {
+      current_m3s: activeProfile.current_discharge_m3s,
+      seasonal_mean_for_date_m3s: activeProfile.seasonal_mean_for_date_m3s,
+      mean_annual_m3s: river.mean_annual_discharge_m3s,
+      deviation_m3s: activeProfile.deviation_m3s,
+      deviation_pct: activeProfile.deviation_pct,
+      historical_percentile: activeProfile.historical_percentile,
+      historical_quantiles_for_date: activeProfile.historical_quantiles_for_date,
+      trend_direction: activeProfile.trend_direction,
+      trend_days: activeProfile.trend_days,
+      trend_delta_m3s: activeProfile.trend_delta_m3s,
+      trend_label: activeProfile.trend_label,
+      regime_code: activeProfile.regime_code as HydrologicalRegimeCode,
+      regime_label: activeProfile.regime_label,
+      category: 'MODELE',
+      source_dataset: 'Copernicus GloFAS v5.0 (LISFLOOD / ERA5)',
+    },
+    temperature: {
+      current_c: matchingStation.latest_temperature_c,
+      seasonal_mean_for_date_c: matchingStation.seasonal_mean_c,
+      deviation_c: matchingStation.temperature_anomaly_c,
+      historical_percentile: river.temperature_percentile,
+      trend_label: river.temperature_trend_label,
+      ecological_threshold_c: 22.0,
+      margin_to_threshold_c: Number((22.0 - matchingStation.latest_temperature_c).toFixed(1)),
+      station_name: matchingStation.name,
+      station_code: matchingStation.station_code,
+      category: 'OBSERVATION',
+    },
+    forecast_outlook: {
+      horizon_days: 10,
+      j5_median_m3s: j5.median,
+      j5_deviation_vs_current_pct: j5DevPct,
+      j10_median_m3s: j10.median,
+      prob_above_seasonal_mean_pct: probAboveMean,
+      prob_exceed_q75_pct: probExceedQ75,
+      outlook_summary: outlookSummary,
+    },
+    diagnostic_headline: activeProfile.regime_label,
+    diagnostic_explanation: activeProfile.interpretation_summary,
+  };
 }
 
 export const DATA_SOURCES_REGISTRY = [
@@ -928,7 +1378,7 @@ export const DATA_SOURCES_REGISTRY = [
     code: 'GLOFAS',
     name: 'Copernicus CEMS GloFAS v5.0 (Catalogue EWDS)',
     description:
-      'Débits fluviaux journaliers modélisés (LISFLOOD + ERA5/ERA5T `cems-glofas-historical`) et prévisions d’ensemble à 51 membres (`cems-glofas-forecast`) à résolution 0.05°.',
+      'Débits fluviaux journaliers modélisés (LISFLOOD + ERA5/ERA5T `cems-glofas-historical`, climatologie 30 ans) et prévisions d’ensemble à 51 membres (`cems-glofas-forecast`) à résolution 0.05°.',
     url: 'https://ewds.climate.copernicus.eu/datasets/cems-glofas-historical',
     version: 'GloFAS v5.0 (EWDS API)',
     data_type: 'MODEL_AND_FORECAST',
