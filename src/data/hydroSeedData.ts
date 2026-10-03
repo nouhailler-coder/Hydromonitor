@@ -2,9 +2,14 @@ import {
   DataCategory,
   HistoricalQuantiles,
   HydrologicalAnalysis,
+  HydrologicalAnomalyLevel,
+  HydrologicalAnomalyReport,
   HydrologicalRegimeCode,
+  MonthlyClimatologyBenchmark,
   SegmentAnalysisProfile,
   TrendDirection,
+  RiverDataMappingItem,
+  MappingQualityAuditSummary,
 } from '../types/hydrology';
 
 export type { DataCategory };
@@ -38,6 +43,11 @@ export interface RiverSegmentRecord {
     longitude: number;
     upstream_area_km2: number;
     elevation_m: number;
+    basin_match?: boolean;
+    upstream_area_ratio?: number;
+    river_order_match?: boolean;
+    direction_match?: boolean;
+    flow_direction_diff_deg?: number;
   };
 }
 
@@ -151,9 +161,9 @@ export const RIVERS_DATA: RiverRecord[] = [
     trend_delta_m3s: 42.0,
     trend_label: '↗ en hausse depuis 3 jours',
     regime_label: 'Écoulement soutenu — au-dessus de la normale saisonnière (72e percentile)',
-    current_temperature_c: 16.4,
-    seasonal_temperature_mean_c: 15.6,
-    temperature_anomaly_c: 0.8,
+    current_temperature_c: 18.7,
+    seasonal_temperature_mean_c: 17.2,
+    temperature_anomaly_c: 1.5,
     temperature_percentile: 68,
     temperature_trend_label: '↗ +0,4 °C depuis 48h',
     glofas_point_id: 'GLOFAS-EU-SEINE-PARIS-042',
@@ -539,13 +549,18 @@ export const RIVER_SEGMENTS_DATA: RiverSegmentRecord[] = [
     glofas_mapping: {
       glofas_point_id: 'gp-seine-paris',
       glofas_id: 'GLOFAS-EU-SEINE-PARIS-042',
-      distance_m: 215.0,
-      mapping_method: 'HYDRORIVERS_GLOFAS_MULTICRITERIA_V1',
-      confidence: 0.97,
+      distance_m: 1800.0,
+      mapping_method: 'HYDRORIVERS_GLOFAS_SCIENTIFIC_V2',
+      confidence: 0.94,
       latitude: 48.855,
       longitude: 2.350,
       upstream_area_km2: 43980.0,
       elevation_m: 28.0,
+      basin_match: true,
+      upstream_area_ratio: 0.992,
+      river_order_match: true,
+      direction_match: true,
+      flow_direction_diff_deg: 12.4,
     },
   },
   {
@@ -815,9 +830,9 @@ export const TEMPERATURE_STATIONS_DATA: TemperatureStationRecord[] = [
     confidence: 0.98,
     source: 'HUBEAU',
     category: 'OBSERVATION',
-    latest_temperature_c: 16.4,
-    seasonal_mean_c: 15.6,
-    temperature_anomaly_c: 0.8,
+    latest_temperature_c: 18.7,
+    seasonal_mean_c: 17.2,
+    temperature_anomaly_c: 1.5,
     latest_measured_at: minsAgo(14),
     quality_code: '1',
     quality_label: 'Qualification Correcte (Naïades Code 1)',
@@ -1145,8 +1160,32 @@ export function generateEnsembleForecast(riverId: string, horizonDays = 10, segm
   const steps = [];
   for (let d = 0; d <= horizonDays; d++) {
     const drift = Math.sin((d / 4) * Math.PI) * (base * 0.07) + d * (base * 0.005);
-    const median = d === 0 ? base : Number((base + drift).toFixed(1));
-    const control = d === 0 ? base : Number((median + Math.cos(d) * (base * 0.022)).toFixed(1));
+    let median = d === 0 ? base : Number((base + drift).toFixed(1));
+
+    // Calibrate Seine Paris precisely to J+1: 440 m³/s, J+3: 510 m³/s, J+7: 470 m³/s
+    if (
+      river.id === 'river-seine' &&
+      (!segmentId || segmentId === 'seg-seine-paris-20410199')
+    ) {
+      const seineParisForecast: Record<number, number> = {
+        0: 425.0,
+        1: 440.0,
+        2: 480.0,
+        3: 510.0,
+        4: 520.0,
+        5: 505.0,
+        6: 488.0,
+        7: 470.0,
+        8: 450.0,
+        9: 435.0,
+        10: 425.0,
+      };
+      if (seineParisForecast[d] !== undefined) {
+        median = seineParisForecast[d];
+      }
+    }
+
+    const control = d === 0 ? base : Number((median + Math.cos(d) * (base * 0.015)).toFixed(1));
     const spread25 = base * (0.02 + d * 0.012);
     const spread90 = base * (0.045 + d * 0.024);
 
@@ -1225,6 +1264,218 @@ export function generateTemperatureHistory(riverId: string, stationId?: string, 
   return points;
 }
 
+// Climatologie mensuelle de référence (1991-2020) pour situer le débit dans son cycle annuel
+export const MONTHLY_CLIMATOLOGY: Record<string, MonthlyClimatologyBenchmark[]> = {
+  'river-seine': [
+    { month_index: 1, month_short: 'Jan', month_name: 'Janvier', mean_m3s: 560, median_m3s: 540, std_m3s: 130, q10_m3s: 340, q25_m3s: 440, q75_m3s: 660, q90_m3s: 820, q98_m3s: 1100 },
+    { month_index: 2, month_short: 'Fév', month_name: 'Février', mean_m3s: 585, median_m3s: 560, std_m3s: 135, q10_m3s: 360, q25_m3s: 460, q75_m3s: 690, q90_m3s: 860, q98_m3s: 1180 },
+    { month_index: 3, month_short: 'Mar', month_name: 'Mars', mean_m3s: 510, median_m3s: 490, std_m3s: 115, q10_m3s: 320, q25_m3s: 410, q75_m3s: 600, q90_m3s: 730, q98_m3s: 980 },
+    { month_index: 4, month_short: 'Avr', month_name: 'Avril', mean_m3s: 420, median_m3s: 400, std_m3s: 95, q10_m3s: 260, q25_m3s: 335, q75_m3s: 490, q90_m3s: 610, q98_m3s: 790 },
+    { month_index: 5, month_short: 'Mai', month_name: 'Mai', mean_m3s: 340, median_m3s: 325, std_m3s: 80, q10_m3s: 210, q25_m3s: 270, q75_m3s: 400, q90_m3s: 490, q98_m3s: 640 },
+    { month_index: 6, month_short: 'Juin', month_name: 'Juin', mean_m3s: 265, median_m3s: 255, std_m3s: 65, q10_m3s: 160, q25_m3s: 210, q75_m3s: 310, q90_m3s: 380, q98_m3s: 510 },
+    { month_index: 7, month_short: 'Juil', month_name: 'Juillet', mean_m3s: 210, median_m3s: 200, std_m3s: 55, q10_m3s: 125, q25_m3s: 165, q75_m3s: 245, q90_m3s: 305, q98_m3s: 410 },
+    { month_index: 8, month_short: 'Août', month_name: 'Août', mean_m3s: 190, median_m3s: 180, std_m3s: 50, q10_m3s: 110, q25_m3s: 145, q75_m3s: 225, q90_m3s: 280, q98_m3s: 370 },
+    { month_index: 9, month_short: 'Sep', month_name: 'Septembre', mean_m3s: 235, median_m3s: 225, std_m3s: 60, q10_m3s: 140, q25_m3s: 185, q75_m3s: 275, q90_m3s: 345, q98_m3s: 460 },
+    { month_index: 10, month_short: 'Oct', month_name: 'Octobre', mean_m3s: 365, median_m3s: 355, std_m3s: 70.5, q10_m3s: 195, q25_m3s: 275, q75_m3s: 440, q90_m3s: 560, q98_m3s: 740 },
+    { month_index: 11, month_short: 'Nov', month_name: 'Novembre', mean_m3s: 445, median_m3s: 430, std_m3s: 95, q10_m3s: 270, q25_m3s: 350, q75_m3s: 525, q90_m3s: 655, q98_m3s: 870 },
+    { month_index: 12, month_short: 'Déc', month_name: 'Décembre', mean_m3s: 520, median_m3s: 500, std_m3s: 115, q10_m3s: 320, q25_m3s: 410, q75_m3s: 615, q90_m3s: 760, q98_m3s: 1020 },
+  ],
+  'river-loire': [
+    { month_index: 1, month_short: 'Jan', month_name: 'Janvier', mean_m3s: 1120, median_m3s: 1080, std_m3s: 320, q10_m3s: 540, q25_m3s: 780, q75_m3s: 1420, q90_m3s: 1850, q98_m3s: 2500 },
+    { month_index: 2, month_short: 'Fév', month_name: 'Février', mean_m3s: 1180, median_m3s: 1140, std_m3s: 340, q10_m3s: 580, q25_m3s: 840, q75_m3s: 1510, q90_m3s: 1960, q98_m3s: 2650 },
+    { month_index: 3, month_short: 'Mar', month_name: 'Mars', mean_m3s: 980, median_m3s: 940, std_m3s: 270, q10_m3s: 490, q25_m3s: 710, q75_m3s: 1230, q90_m3s: 1580, q98_m3s: 2150 },
+    { month_index: 4, month_short: 'Avr', month_name: 'Avril', mean_m3s: 740, median_m3s: 710, std_m3s: 210, q10_m3s: 360, q25_m3s: 520, q75_m3s: 930, q90_m3s: 1210, q98_m3s: 1680 },
+    { month_index: 5, month_short: 'Mai', month_name: 'Mai', mean_m3s: 540, median_m3s: 510, std_m3s: 160, q10_m3s: 260, q25_m3s: 380, q75_m3s: 680, q90_m3s: 890, q98_m3s: 1250 },
+    { month_index: 6, month_short: 'Juin', month_name: 'Juin', mean_m3s: 360, median_m3s: 340, std_m3s: 110, q10_m3s: 170, q25_m3s: 250, q75_m3s: 460, q90_m3s: 600, q98_m3s: 850 },
+    { month_index: 7, month_short: 'Juil', month_name: 'Juillet', mean_m3s: 260, median_m3s: 245, std_m3s: 85, q10_m3s: 130, q25_m3s: 185, q75_m3s: 330, q90_m3s: 430, q98_m3s: 620 },
+    { month_index: 8, month_short: 'Août', month_name: 'Août', mean_m3s: 220, median_m3s: 210, std_m3s: 70, q10_m3s: 115, q25_m3s: 160, q75_m3s: 275, q90_m3s: 360, q98_m3s: 520 },
+    { month_index: 9, month_short: 'Sep', month_name: 'Septembre', mean_m3s: 270, median_m3s: 255, std_m3s: 80, q10_m3s: 140, q25_m3s: 195, q75_m3s: 340, q90_m3s: 450, q98_m3s: 650 },
+    { month_index: 10, month_short: 'Oct', month_name: 'Octobre', mean_m3s: 380, median_m3s: 375, std_m3s: 75, q10_m3s: 190, q25_m3s: 295, q75_m3s: 485, q90_m3s: 640, q98_m3s: 920 },
+    { month_index: 11, month_short: 'Nov', month_name: 'Novembre', mean_m3s: 620, median_m3s: 590, std_m3s: 180, q10_m3s: 310, q25_m3s: 440, q75_m3s: 780, q90_m3s: 1020, q98_m3s: 1450 },
+    { month_index: 12, month_short: 'Déc', month_name: 'Décembre', mean_m3s: 940, median_m3s: 900, std_m3s: 260, q10_m3s: 460, q25_m3s: 660, q75_m3s: 1190, q90_m3s: 1540, q98_m3s: 2120 },
+  ],
+  'river-rhone': [
+    { month_index: 1, month_short: 'Jan', month_name: 'Janvier', mean_m3s: 1750, median_m3s: 1710, std_m3s: 340, q10_m3s: 1100, q25_m3s: 1360, q75_m3s: 2100, q90_m3s: 2550, q98_m3s: 3300 },
+    { month_index: 2, month_short: 'Fév', month_name: 'Février', mean_m3s: 1820, median_m3s: 1780, std_m3s: 360, q10_m3s: 1150, q25_m3s: 1420, q75_m3s: 2190, q90_m3s: 2660, q98_m3s: 3450 },
+    { month_index: 3, month_short: 'Mar', month_name: 'Mars', mean_m3s: 1790, median_m3s: 1750, std_m3s: 350, q10_m3s: 1120, q25_m3s: 1390, q75_m3s: 2150, q90_m3s: 2610, q98_m3s: 3400 },
+    { month_index: 4, month_short: 'Avr', month_name: 'Avril', mean_m3s: 1860, median_m3s: 1820, std_m3s: 370, q10_m3s: 1180, q25_m3s: 1460, q75_m3s: 2240, q90_m3s: 2720, q98_m3s: 3550 },
+    { month_index: 5, month_short: 'Mai', month_name: 'Mai', mean_m3s: 1980, median_m3s: 1930, std_m3s: 390, q10_m3s: 1260, q25_m3s: 1560, q75_m3s: 2380, q90_m3s: 2890, q98_m3s: 3750 },
+    { month_index: 6, month_short: 'Juin', month_name: 'Juin', mean_m3s: 1810, median_m3s: 1760, std_m3s: 350, q10_m3s: 1150, q25_m3s: 1420, q75_m3s: 2170, q90_m3s: 2640, q98_m3s: 3450 },
+    { month_index: 7, month_short: 'Juil', month_name: 'Juillet', mean_m3s: 1480, median_m3s: 1440, std_m3s: 290, q10_m3s: 940, q25_m3s: 1160, q75_m3s: 1780, q90_m3s: 2160, q98_m3s: 2820 },
+    { month_index: 8, month_short: 'Août', month_name: 'Août', mean_m3s: 1280, median_m3s: 1250, std_m3s: 250, q10_m3s: 810, q25_m3s: 1010, q75_m3s: 1540, q90_m3s: 1870, q98_m3s: 2450 },
+    { month_index: 9, month_short: 'Sep', month_name: 'Septembre', mean_m3s: 1320, median_m3s: 1290, std_m3s: 260, q10_m3s: 840, q25_m3s: 1040, q75_m3s: 1580, q90_m3s: 1930, q98_m3s: 2520 },
+    { month_index: 10, month_short: 'Oct', month_name: 'Octobre', mean_m3s: 1485, median_m3s: 1460, std_m3s: 150, q10_m3s: 940, q25_m3s: 1180, q75_m3s: 1760, q90_m3s: 2150, q98_m3s: 2820 },
+    { month_index: 11, month_short: 'Nov', month_name: 'Novembre', mean_m3s: 1680, median_m3s: 1640, std_m3s: 330, q10_m3s: 1060, q25_m3s: 1310, q75_m3s: 2020, q90_m3s: 2460, q98_m3s: 3200 },
+    { month_index: 12, month_short: 'Déc', month_name: 'Décembre', mean_m3s: 1720, median_m3s: 1680, std_m3s: 340, q10_m3s: 1090, q25_m3s: 1350, q75_m3s: 2070, q90_m3s: 2520, q98_m3s: 3280 },
+  ],
+};
+
+export function evaluateFlowAgainstBenchmark(flow: number, b: MonthlyClimatologyBenchmark): {
+  percentile: number;
+  z_score: number;
+  deviation_m3s: number;
+  deviation_pct: number;
+  level: HydrologicalAnomalyLevel;
+  level_label: string;
+} {
+  const z = Number(((flow - b.mean_m3s) / Math.max(1, b.std_m3s)).toFixed(2));
+  const devM3s = Number((flow - b.mean_m3s).toFixed(1));
+  const devPct = Number((((flow - b.mean_m3s) / b.mean_m3s) * 100).toFixed(1));
+
+  let p: number;
+  if (flow <= b.q10_m3s) {
+    p = Math.max(1, Math.round((flow / Math.max(1, b.q10_m3s)) * 10));
+  } else if (flow <= b.q25_m3s) {
+    p = Math.round(10 + ((flow - b.q10_m3s) / Math.max(1, b.q25_m3s - b.q10_m3s)) * 15);
+  } else if (flow <= b.median_m3s) {
+    p = Math.round(25 + ((flow - b.q25_m3s) / Math.max(1, b.median_m3s - b.q25_m3s)) * 25);
+  } else if (flow <= b.q75_m3s) {
+    p = Math.round(50 + ((flow - b.median_m3s) / Math.max(1, b.q75_m3s - b.median_m3s)) * 25);
+  } else if (flow <= b.q90_m3s) {
+    p = Math.round(75 + ((flow - b.q75_m3s) / Math.max(1, b.q90_m3s - b.q75_m3s)) * 15);
+  } else if (flow <= b.q98_m3s) {
+    p = Math.round(90 + ((flow - b.q90_m3s) / Math.max(1, b.q98_m3s - b.q90_m3s)) * 8);
+  } else {
+    p = 99;
+  }
+
+  let level: HydrologicalAnomalyLevel;
+  let level_label: string;
+  if (p < 10) {
+    level = 'VERY_LOW';
+    level_label = 'très faible';
+  } else if (p < 25) {
+    level = 'MODERATE_LOW';
+    level_label = 'modérément faible';
+  } else if (p <= 75) {
+    level = 'NORMAL';
+    level_label = 'normal';
+  } else if (p <= 90) {
+    level = 'HIGH';
+    level_label = 'élevé';
+  } else {
+    level = 'EXCEPTIONAL';
+    level_label = 'exceptionnel';
+  }
+
+  return { percentile: p, z_score: z, deviation_m3s: devM3s, deviation_pct: devPct, level, level_label };
+}
+
+export function computeHydrologicalAnomalyReport(
+  riverId: string,
+  segmentId?: string,
+  overrideFlow?: number
+): HydrologicalAnomalyReport {
+  const river = RIVERS_DATA.find((r) => r.id === riverId) ?? RIVERS_DATA[0];
+  const profiles = SEGMENT_ANALYSIS_PROFILES[river.id] || [];
+  const profile =
+    (segmentId ? profiles.find((p) => p.segment_id === segmentId) : undefined) || profiles[0];
+
+  const currentFlow = overrideFlow !== undefined ? overrideFlow : profile.current_discharge_m3s;
+  const seasonalMean = profile.seasonal_mean_for_date_m3s;
+  const seasonalMedian = profile.historical_quantiles_for_date.q50;
+  const seasonalStd = (profile.historical_quantiles_for_date.q75 - profile.historical_quantiles_for_date.q25) / 1.349;
+  const annualMean = river.mean_annual_discharge_m3s;
+
+  const zScore = Number(((currentFlow - seasonalMean) / Math.max(1, seasonalStd)).toFixed(2));
+  const devToMeanM3s = Number((currentFlow - seasonalMean).toFixed(1));
+  const devToMeanPct = Number((((currentFlow - seasonalMean) / seasonalMean) * 100).toFixed(1));
+  const devToMedM3s = Number((currentFlow - seasonalMedian).toFixed(1));
+  const devToMedPct = Number((((currentFlow - seasonalMedian) / seasonalMedian) * 100).toFixed(1));
+  const devToAnnM3s = Number((currentFlow - annualMean).toFixed(1));
+  const devToAnnPct = Number((((currentFlow - annualMean) / annualMean) * 100).toFixed(1));
+
+  const percentile = overrideFlow !== undefined
+    ? estimatePercentileFromQuantiles(currentFlow, profile.historical_quantiles_for_date)
+    : profile.historical_percentile;
+
+  let level: HydrologicalAnomalyLevel;
+  let level_label: string;
+  if (percentile < 10) {
+    level = 'VERY_LOW';
+    level_label = 'très faible';
+  } else if (percentile < 25) {
+    level = 'MODERATE_LOW';
+    level_label = 'modérément faible';
+  } else if (percentile <= 75) {
+    level = 'NORMAL';
+    level_label = 'normal';
+  } else if (percentile <= 90) {
+    level = 'HIGH';
+    level_label = 'élevé';
+  } else {
+    level = 'EXCEPTIONAL';
+    level_label = 'exceptionnel';
+  }
+
+  // Ladder position: from bottom (0% = très faible) to top (100% = exceptionnel)
+  const ladderPos = Math.min(98, Math.max(2, percentile));
+
+  const monthlyList = MONTHLY_CLIMATOLOGY[river.id] || MONTHLY_CLIMATOLOGY['river-seine'];
+  const bJan = monthlyList[0];
+  const bAug = monthlyList[7];
+  const bOct = monthlyList[9];
+
+  // Specific simulation for 400 m³/s or currentFlow across seasons
+  const testFlowVal = overrideFlow !== undefined ? overrideFlow : (river.id === 'river-seine' ? 400 : Math.round(annualMean * 0.85));
+  const janEval = evaluateFlowAgainstBenchmark(testFlowVal, bJan);
+  const augEval = evaluateFlowAgainstBenchmark(testFlowVal, bAug);
+  const octEval = evaluateFlowAgainstBenchmark(currentFlow, bOct);
+
+  return {
+    reference_station_label: profile.reference_label,
+    flow_m3s: currentFlow,
+    period_of_year_label: 'Début Octobre (Automne hydrologique)',
+    day_of_year: 275,
+    percentile,
+    z_score: zScore,
+    deviation_to_seasonal_mean_m3s: devToMeanM3s,
+    deviation_to_seasonal_mean_pct: devToMeanPct,
+    deviation_to_seasonal_median_m3s: devToMedM3s,
+    deviation_to_seasonal_median_pct: devToMedPct,
+    deviation_to_annual_mean_m3s: devToAnnM3s,
+    deviation_to_annual_mean_pct: devToAnnPct,
+    level,
+    level_label,
+    ladder_position_pct: ladderPos,
+    level_summary: `${level_label.toUpperCase()} · ${percentile}e percentile · z: ${zScore >= 0 ? '+' : ''}${zScore}σ par rapport à la climatologie journalière 1991–2020`,
+    seasonal_mean_m3s: seasonalMean,
+    seasonal_median_m3s: seasonalMedian,
+    seasonal_std_m3s: Number(seasonalStd.toFixed(1)),
+    annual_mean_m3s: annualMean,
+    quantiles_for_date: profile.historical_quantiles_for_date,
+    monthly_benchmarks: monthlyList,
+    comparative_simulation: {
+      test_flow_m3s: testFlowVal,
+      january: {
+        month_name: 'Janvier (Hautes eaux d\'hiver)',
+        mean_m3s: bJan.mean_m3s,
+        percentile: janEval.percentile,
+        z_score: janEval.z_score,
+        level_label: janEval.level_label,
+        interpretation: `En janvier, ${testFlowVal} m³/s correspond au ${janEval.percentile}e percentile (${janEval.deviation_pct >= 0 ? '+' : ''}${janEval.deviation_pct} % vs normale hivernale de ${bJan.mean_m3s} m³/s). Ce débit y est inhabituellement faible pour l'hiver.`,
+      },
+      august: {
+        month_name: 'Août (Basses eaux d\'étiage)',
+        mean_m3s: bAug.mean_m3s,
+        percentile: augEval.percentile,
+        z_score: augEval.z_score,
+        level_label: augEval.level_label,
+        interpretation: `En août, ${testFlowVal} m³/s correspond au ${augEval.percentile}e percentile (${augEval.deviation_pct >= 0 ? '+' : ''}${augEval.deviation_pct} % vs normale estivale de ${bAug.mean_m3s} m³/s). Ce même débit correspond à une crue estivale exceptionnelle !`,
+      },
+      current_month: {
+        month_name: 'Octobre (Période actuelle)',
+        mean_m3s: bOct.mean_m3s,
+        percentile: octEval.percentile,
+        z_score: octEval.z_score,
+        level_label: octEval.level_label,
+        interpretation: `En octobre, ${currentFlow} m³/s correspond au ${octEval.percentile}e percentile (${octEval.deviation_pct >= 0 ? '+' : ''}${octEval.deviation_pct} % vs normale calendaire de ${bOct.mean_m3s} m³/s). L'écoulement y est soutenu sans être une crue.`,
+      },
+      takeaway: `Un débit de ${testFlowVal} m³/s n'a pas la même signification en janvier et en août : en janvier il témoigne d'un étiage hivernal anormal (${janEval.percentile}e percentile), alors qu'en août il représente un débit exceptionnel (${augEval.percentile}e percentile) !`,
+    },
+  };
+}
+
 // Core Hydrological Analysis Engine: contextualizes current state vs 30-year historical behavior
 export function computeHydrologicalAnalysis(
   riverId: string,
@@ -1276,6 +1527,8 @@ export function computeHydrologicalAnalysis(
       ? `Amorçage d'une décrue modérée d'ici J+5 (médiane ${j5.median} m³/s, ${j5DevPct} % vs actuel).`
       : `Stabilisation attendue autour de ${j5.median} m³/s à J+5 (${probAboveMean} % des scénarios au-dessus de la moyenne calendaire).`;
 
+  const anomalyReport = computeHydrologicalAnomalyReport(river.id, activeProfile.segment_id);
+
   return {
     river_id: river.id,
     river_name: river.name,
@@ -1322,6 +1575,7 @@ export function computeHydrologicalAnalysis(
       prob_exceed_q75_pct: probExceedQ75,
       outlook_summary: outlookSummary,
     },
+    anomaly_report: anomalyReport,
     diagnostic_headline: activeProfile.regime_label,
     diagnostic_explanation: activeProfile.interpretation_summary,
   };
@@ -1487,3 +1741,311 @@ export const INITIAL_INGESTION_RUNS = [
     error_message: null,
   },
 ];
+
+// Table de qualité du rapprochement spatial scientifique (river_data_mapping)
+export const RIVER_DATA_MAPPING_DATA: RiverDataMappingItem[] = [
+  // 1. Seine Paris ↔ GloFAS Paris (1.8 km)
+  {
+    id: 'rdm-seine-paris-glofas',
+    river_segment_id: 'seg-seine-paris-20410199',
+    segment_label: 'SEINE — PARIS (Montereau → Paris → Conflans)',
+    river_id: 'river-seine',
+    river_name: 'La Seine',
+    strahler_order: 7,
+    source: 'GLOFAS',
+    source_id: 'GLOFAS-EU-SEINE-PARIS-042',
+    source_label: 'Point GloFAS #042 (48.855°N, 2.350°E)',
+    distance_m: 1800.0,
+    basin_match: true,
+    upstream_area_ratio: 0.992,
+    upstream_area_segment_km2: 44320.0,
+    upstream_area_source_km2: 43980.0,
+    river_order_match: true,
+    direction_match: true,
+    flow_direction_diff_deg: 12.4,
+    confidence_score: 0.94,
+    confidence_level: 'HIGH',
+    mapping_version: 'v2.4-multicriteria-scientific',
+    created_at: minsAgo(41),
+    notes: 'Rapprochement optimal : bassin identique, surface drainée concordante à 99,2 %, azimut d’écoulement ouest-nord-ouest (292° vs 304°).',
+  },
+  // 2. Seine Troyes ↔ GloFAS Troyes (0.34 km)
+  {
+    id: 'rdm-seine-troyes-glofas',
+    river_segment_id: 'seg-seine-amont-20410101',
+    segment_label: 'SEINE — TROYES (Source → Troyes → Nogent-sur-Seine)',
+    river_id: 'river-seine',
+    river_name: 'La Seine',
+    strahler_order: 6,
+    source: 'GLOFAS',
+    source_id: 'GLOFAS-EU-SEINE-TROYES-019',
+    source_label: 'Point GloFAS #019 (48.297°N, 4.079°E)',
+    distance_m: 340.0,
+    basin_match: true,
+    upstream_area_ratio: 0.965,
+    upstream_area_segment_km2: 10450.0,
+    upstream_area_source_km2: 10110.0,
+    river_order_match: true,
+    direction_match: true,
+    flow_direction_diff_deg: 8.7,
+    confidence_score: 0.94,
+    confidence_level: 'HIGH',
+    mapping_version: 'v2.4-multicriteria-scientific',
+    created_at: minsAgo(41),
+    notes: 'Forte concordance hydrographique sur la haute Seine amont.',
+  },
+  // 3. Seine Poses / Rouen ↔ GloFAS Poses (0.28 km)
+  {
+    id: 'rdm-seine-poses-glofas',
+    river_segment_id: 'seg-seine-aval-20410285',
+    segment_label: 'SEINE — POSES / ROUEN (Conflans → Poses → Le Havre)',
+    river_id: 'river-seine',
+    river_name: 'La Seine',
+    strahler_order: 7,
+    source: 'GLOFAS',
+    source_id: 'GLOFAS-EU-SEINE-POSES-058',
+    source_label: 'Point GloFAS #058 (49.305°N, 1.245°E)',
+    distance_m: 280.0,
+    basin_match: true,
+    upstream_area_ratio: 0.978,
+    upstream_area_segment_km2: 66500.0,
+    upstream_area_source_km2: 65100.0,
+    river_order_match: true,
+    direction_match: true,
+    flow_direction_diff_deg: 9.2,
+    confidence_score: 0.96,
+    confidence_level: 'HIGH',
+    mapping_version: 'v2.4-multicriteria-scientific',
+    created_at: minsAgo(41),
+    notes: 'Point de contrôle aval en amont de l’onde de marée fluviale.',
+  },
+  // 4. Loire Orléans ↔ GloFAS Orléans (1.9 km)
+  {
+    id: 'rdm-loire-orleans-glofas',
+    river_segment_id: 'seg-loire-moyenne-20420512',
+    segment_label: 'LOIRE — ORLÉANS (Nevers → Orléans → Tours)',
+    river_id: 'river-loire',
+    river_name: 'La Loire',
+    strahler_order: 8,
+    source: 'GLOFAS',
+    source_id: 'GLOFAS-EU-LOIRE-ORLEANS-088',
+    source_label: 'Point GloFAS #088 (47.900°N, 1.902°E)',
+    distance_m: 1900.0,
+    basin_match: true,
+    upstream_area_ratio: 0.985,
+    upstream_area_segment_km2: 37550.0,
+    upstream_area_source_km2: 36970.0,
+    river_order_match: true,
+    direction_match: true,
+    flow_direction_diff_deg: 14.1,
+    confidence_score: 0.95,
+    confidence_level: 'HIGH',
+    mapping_version: 'v2.4-multicriteria-scientific',
+    created_at: minsAgo(41),
+    notes: 'Bassin Loire moyenne, inflexion vers l’ouest respectée par le réseau de drainage GloFAS.',
+  },
+  // 5. Loire Montjean ↔ GloFAS Montjean (1.2 km)
+  {
+    id: 'rdm-loire-montjean-glofas',
+    river_segment_id: 'seg-loire-aval-20420680',
+    segment_label: 'LOIRE — MONTJEAN (Tours → Montjean → Saint-Nazaire)',
+    river_id: 'river-loire',
+    river_name: 'La Loire',
+    strahler_order: 8,
+    source: 'GLOFAS',
+    source_id: 'GLOFAS-EU-LOIRE-MONTJEAN-094',
+    source_label: 'Point GloFAS #094 (47.388°N, -0.861°E)',
+    distance_m: 1200.0,
+    basin_match: true,
+    upstream_area_ratio: 0.972,
+    upstream_area_segment_km2: 113100.0,
+    upstream_area_source_km2: 109930.0,
+    river_order_match: true,
+    direction_match: true,
+    flow_direction_diff_deg: 11.5,
+    confidence_score: 0.96,
+    confidence_level: 'HIGH',
+    mapping_version: 'v2.4-multicriteria-scientific',
+    created_at: minsAgo(41),
+    notes: 'Confluence Maine et Vienne intégrée sans perte de cohérence surfacique.',
+  },
+  // 6. Rhône Beaucaire ↔ GloFAS Beaucaire (1.1 km)
+  {
+    id: 'rdm-rhone-beaucaire-glofas',
+    river_segment_id: 'seg-rhone-aval-20430944',
+    segment_label: 'RHÔNE — BEAUCAIRE (Lyon → Valence → Beaucaire → Camargue)',
+    river_id: 'river-rhone',
+    river_name: 'Le Rhône',
+    strahler_order: 8,
+    source: 'GLOFAS',
+    source_id: 'GLOFAS-EU-RHONE-BEAUCAIRE-114',
+    source_label: 'Point GloFAS #114 (43.806°N, 4.655°E)',
+    distance_m: 1100.0,
+    basin_match: true,
+    upstream_area_ratio: 0.998,
+    upstream_area_segment_km2: 95590.0,
+    upstream_area_source_km2: 95500.0,
+    river_order_match: true,
+    direction_match: true,
+    flow_direction_diff_deg: 7.3,
+    confidence_score: 0.98,
+    confidence_level: 'HIGH',
+    mapping_version: 'v2.4-multicriteria-scientific',
+    created_at: minsAgo(41),
+    notes: 'Très haute fidélité au niveau de la tête de delta du Rhône à Beaucaire / Vallabrègues.',
+  },
+  // 7. Seine Paris ↔ Station Hub'Eau Austerlitz (142 m)
+  {
+    id: 'rdm-seine-paris-hubeau-03174000',
+    river_segment_id: 'seg-seine-paris-20410199',
+    segment_label: 'SEINE — PARIS (Montereau → Paris → Conflans)',
+    river_id: 'river-seine',
+    river_name: 'La Seine',
+    strahler_order: 7,
+    source: 'HUBEAU',
+    source_id: '03174000',
+    source_label: "Station Hub'Eau #03174000 (Pont d'Austerlitz)",
+    distance_m: 142.0,
+    basin_match: true,
+    upstream_area_ratio: 0.995,
+    upstream_area_segment_km2: 44320.0,
+    upstream_area_source_km2: 44100.0,
+    river_order_match: true,
+    direction_match: true,
+    flow_direction_diff_deg: 4.2,
+    confidence_score: 0.98,
+    confidence_level: 'HIGH',
+    mapping_version: 'v2.4-multicriteria-scientific',
+    created_at: minsAgo(14),
+    notes: 'Implantation métrologique officielle de référence pour la région Île-de-France.',
+  },
+  // 8. Seine Corbeil ↔ Station Hub'Eau Corbeil (195 m)
+  {
+    id: 'rdm-seine-corbeil-hubeau-03171500',
+    river_segment_id: 'seg-seine-paris-20410199',
+    segment_label: 'SEINE — PARIS (Montereau → Paris → Conflans)',
+    river_id: 'river-seine',
+    river_name: 'La Seine',
+    strahler_order: 7,
+    source: 'HUBEAU',
+    source_id: '03171500',
+    source_label: "Station Hub'Eau #03171500 (Corbeil-Essonnes)",
+    distance_m: 195.0,
+    basin_match: true,
+    upstream_area_ratio: 0.962,
+    upstream_area_segment_km2: 44320.0,
+    upstream_area_source_km2: 42600.0,
+    river_order_match: true,
+    direction_match: true,
+    flow_direction_diff_deg: 6.8,
+    confidence_score: 0.96,
+    confidence_level: 'HIGH',
+    mapping_version: 'v2.4-multicriteria-scientific',
+    created_at: minsAgo(26),
+    notes: 'Station amont d’agglomération parisienne, surveillance thermique Naïades.',
+  },
+  // 9. Loire Sandillon ↔ Station Hub'Eau Sandillon (165 m)
+  {
+    id: 'rdm-loire-sandillon-hubeau-04051125',
+    river_segment_id: 'seg-loire-moyenne-20420512',
+    segment_label: 'LOIRE — ORLÉANS (Nevers → Orléans → Tours)',
+    river_id: 'river-loire',
+    river_name: 'La Loire',
+    strahler_order: 8,
+    source: 'HUBEAU',
+    source_id: '04051125',
+    source_label: "Station Hub'Eau #04051125 (Sandillon / Orléans)",
+    distance_m: 165.0,
+    basin_match: true,
+    upstream_area_ratio: 0.988,
+    upstream_area_segment_km2: 37550.0,
+    upstream_area_source_km2: 37100.0,
+    river_order_match: true,
+    direction_match: true,
+    flow_direction_diff_deg: 5.4,
+    confidence_score: 0.97,
+    confidence_level: 'HIGH',
+    mapping_version: 'v2.4-multicriteria-scientific',
+    created_at: minsAgo(18),
+    notes: 'Surveillance Loire moyenne en amont d’Orléans.',
+  },
+  // 10. Rhône Lyon Morand ↔ Station Hub'Eau (120 m)
+  {
+    id: 'rdm-rhone-lyon-hubeau-06055500',
+    river_segment_id: 'seg-rhone-aval-20430944',
+    segment_label: 'RHÔNE — BEAUCAIRE (Lyon → Valence → Beaucaire → Camargue)',
+    river_id: 'river-rhone',
+    river_name: 'Le Rhône',
+    strahler_order: 8,
+    source: 'HUBEAU',
+    source_id: '06055500',
+    source_label: "Station Hub'Eau #06055500 (Lyon Pont Morand)",
+    distance_m: 120.0,
+    basin_match: true,
+    upstream_area_ratio: 0.975,
+    upstream_area_segment_km2: 95590.0,
+    upstream_area_source_km2: 93200.0,
+    river_order_match: true,
+    direction_match: true,
+    flow_direction_diff_deg: 3.9,
+    confidence_score: 0.98,
+    confidence_level: 'HIGH',
+    mapping_version: 'v2.4-multicriteria-scientific',
+    created_at: minsAgo(21),
+    notes: 'Station en confluence Saône-Rhône avec qualification Naïades code 1.',
+  },
+];
+
+export function computeMappingQualityAudit(
+  items: RiverDataMappingItem[] = RIVER_DATA_MAPPING_DATA
+): MappingQualityAuditSummary {
+  const total = items.length;
+  if (total === 0) {
+    return {
+      total_mappings: 0,
+      mean_confidence_score: 0,
+      glofas_mappings_count: 0,
+      hubeau_mappings_count: 0,
+      high_confidence_count: 0,
+      medium_confidence_count: 0,
+      low_confidence_count: 0,
+      basin_compatibility_pct: 100,
+      upstream_area_compatibility_pct: 100,
+      river_order_compatibility_pct: 100,
+      direction_compatibility_pct: 100,
+      algorithm_version: 'v2.4-multicriteria-scientific',
+      last_audit_at: new Date().toISOString(),
+    };
+  }
+
+  const sumConf = items.reduce((acc, it) => acc + it.confidence_score, 0);
+  const glofasCount = items.filter((it) => it.source === 'GLOFAS').length;
+  const hubeauCount = items.filter((it) => it.source === 'HUBEAU').length;
+  const highCount = items.filter((it) => it.confidence_score >= 0.85).length;
+  const medCount = items.filter(
+    (it) => it.confidence_score >= 0.7 && it.confidence_score < 0.85
+  ).length;
+  const lowCount = items.filter((it) => it.confidence_score < 0.7).length;
+
+  const basinMatchCount = items.filter((it) => it.basin_match).length;
+  const areaMatchCount = items.filter((it) => it.upstream_area_ratio >= 0.8).length;
+  const orderMatchCount = items.filter((it) => it.river_order_match).length;
+  const dirMatchCount = items.filter((it) => it.direction_match).length;
+
+  return {
+    total_mappings: total,
+    mean_confidence_score: Number((sumConf / total).toFixed(4)),
+    glofas_mappings_count: glofasCount,
+    hubeau_mappings_count: hubeauCount,
+    high_confidence_count: highCount,
+    medium_confidence_count: medCount,
+    low_confidence_count: lowCount,
+    basin_compatibility_pct: Number(((basinMatchCount / total) * 100).toFixed(1)),
+    upstream_area_compatibility_pct: Number(((areaMatchCount / total) * 100).toFixed(1)),
+    river_order_compatibility_pct: Number(((orderMatchCount / total) * 100).toFixed(1)),
+    direction_compatibility_pct: Number(((dirMatchCount / total) * 100).toFixed(1)),
+    algorithm_version: 'v2.4-multicriteria-scientific',
+    last_audit_at: new Date().toISOString(),
+  };
+}
+

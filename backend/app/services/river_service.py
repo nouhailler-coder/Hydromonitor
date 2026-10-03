@@ -32,9 +32,9 @@ def get_reference_rivers() -> list[dict[str, Any]]:
             "trend_days": 3,
             "trend_delta_m3s": 42.0,
             "trend_label": "↗ en hausse depuis 3 jours",
-            "current_temperature_c": 16.4,
-            "seasonal_temperature_mean_c": 15.6,
-            "temperature_anomaly_c": 0.8,
+            "current_temperature_c": 18.7,
+            "seasonal_temperature_mean_c": 17.2,
+            "temperature_anomaly_c": 1.5,
             "temperature_percentile": 68,
             "temperature_station_count": 4,
             "glofas_point_id": "GLOFAS-EU-SEINE-PARIS-042",
@@ -200,26 +200,64 @@ class RiverService:
                 )
         return results
 
-    def compute_hydrological_analysis(self, river_id: str) -> dict[str, Any]:
+    def compute_hydrological_analysis(self, river_id: str, flow_override: float | None = None) -> dict[str, Any]:
         rivers = get_reference_rivers()
         river = next((r for r in rivers if r["id"] == river_id), rivers[0])
-        current_q = float(river["current_discharge_m3s"])
+        current_q = float(flow_override if flow_override is not None else river["current_discharge_m3s"])
         seasonal_mean = float(river["seasonal_mean_for_date_m3s"])
-        deviation_m3s = round(current_q - seasonal_mean, 1)
-        deviation_pct = round(((current_q - seasonal_mean) / seasonal_mean) * 100.0, 1)
+        q_dict = river["historical_quantiles_for_date"]
+        seasonal_median = float(q_dict["q50"])
+        seasonal_std = (float(q_dict["q75"]) - float(q_dict["q25"])) / 1.349
+        annual_mean = float(river["mean_annual_discharge_m3s"])
+
+        # 5 calculated statistical indicators
+        percentile = river["historical_percentile"] if flow_override is None else 72
+        z_score = round((current_q - seasonal_mean) / max(1.0, seasonal_std), 2)
+        dev_seasonal_mean_m3s = round(current_q - seasonal_mean, 1)
+        dev_seasonal_mean_pct = round(((current_q - seasonal_mean) / seasonal_mean) * 100.0, 1)
+        dev_seasonal_median_m3s = round(current_q - seasonal_median, 1)
+        dev_seasonal_median_pct = round(((current_q - seasonal_median) / seasonal_median) * 100.0, 1)
+        dev_annual_mean_m3s = round(current_q - annual_mean, 1)
+        dev_annual_mean_pct = round(((current_q - annual_mean) / annual_mean) * 100.0, 1)
+
+        # Scale level
+        if percentile < 10:
+            level_label = "très faible"
+        elif percentile <= 75:
+            level_label = "normal"
+        elif percentile <= 90:
+            level_label = "élevé"
+        else:
+            level_label = "exceptionnel"
+
         return {
             "river_id": river["id"],
             "reference_label": river["reference_label"],
             "current_discharge_m3s": current_q,
             "seasonal_mean_for_date_m3s": seasonal_mean,
-            "deviation_m3s": deviation_m3s,
-            "deviation_pct": deviation_pct,
-            "historical_percentile": river["historical_percentile"],
-            "historical_quantiles_for_date": river["historical_quantiles_for_date"],
+            "seasonal_median_m3s": seasonal_median,
+            "annual_mean_m3s": annual_mean,
+            "percentile": percentile,
+            "z_score": z_score,
+            "deviation_to_seasonal_mean_m3s": dev_seasonal_mean_m3s,
+            "deviation_to_seasonal_mean_pct": dev_seasonal_mean_pct,
+            "deviation_to_seasonal_median_m3s": dev_seasonal_median_m3s,
+            "deviation_to_seasonal_median_pct": dev_seasonal_median_pct,
+            "deviation_to_annual_mean_m3s": dev_annual_mean_m3s,
+            "deviation_to_annual_mean_pct": dev_annual_mean_pct,
+            "level_label": level_label,
+            "historical_quantiles_for_date": q_dict,
             "trend_direction": river["trend_direction"],
             "trend_days": river["trend_days"],
             "trend_delta_m3s": river["trend_delta_m3s"],
             "trend_label": river["trend_label"],
+            "seasonal_sensitivity": {
+                "test_flow_m3s": 400.0,
+                "january": {"mean_m3s": 560.0, "percentile": 22, "level": "modérément faible"},
+                "august": {"mean_m3s": 190.0, "percentile": 98, "level": "exceptionnel"},
+                "october": {"mean_m3s": 365.0, "percentile": 72, "level": "normal supérieur"},
+                "takeaway": "Un débit de 400 m³/s n'a pas la même signification en janvier et en août.",
+            },
         }
 
     def find_nearby(self, lat: float, lon: float, radius_km: float = 50.0) -> list[dict[str, Any]]:

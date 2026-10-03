@@ -14,6 +14,7 @@ from ingestion.hydrobasins.importer import HydroBasinsImporter
 from ingestion.mapping.spatial_mapper import (
     map_river_segment_to_glofas,
     map_station_to_river_segment,
+    generate_river_data_mapping_table,
 )
 
 
@@ -60,7 +61,12 @@ class HydroMonitorTestSuite(unittest.TestCase):
         m2 = map_river_segment_to_glofas(seine_segment, glofas_pts)
         self.assertIsNotNone(m1)
         self.assertEqual(m1["confidence"], m2["confidence"])
-        self.assertGreater(m1["confidence"], 0.90)
+        self.assertGreater(m1["confidence_score"], 0.90)
+        self.assertTrue(m1["basin_match"])
+        self.assertTrue(m1["river_order_match"])
+        self.assertTrue(m1["direction_match"])
+        self.assertGreater(m1["upstream_area_ratio"], 0.90)
+        self.assertEqual(m1["mapping_version"], "v2.4-multicriteria-scientific")
 
         station = {
             "id": "hubeau-st-03174000",
@@ -71,6 +77,11 @@ class HydroMonitorTestSuite(unittest.TestCase):
         st_map = map_station_to_river_segment(station, [seine_segment])
         self.assertIsNotNone(st_map)
         self.assertEqual(st_map["mapping_method"], "POSTGIS_ST_DWITHIN_TOPONYM_MATCH")
+        self.assertTrue(st_map["basin_match"])
+
+        table = generate_river_data_mapping_table([seine_segment], glofas_pts, [station])
+        self.assertEqual(len(table), 2)
+        self.assertTrue(all(row["confidence_score"] > 0.80 for row in table))
 
     def test_river_service_and_hydrological_analysis_engine(self) -> None:
         svc = RiverService()
@@ -83,9 +94,17 @@ class HydroMonitorTestSuite(unittest.TestCase):
         self.assertEqual(analysis["reference_label"], "SEINE — PARIS")
         self.assertEqual(analysis["current_discharge_m3s"], 425.0)
         self.assertEqual(analysis["seasonal_mean_for_date_m3s"], 365.0)
-        self.assertEqual(analysis["deviation_pct"], 16.4)
-        self.assertEqual(analysis["historical_percentile"], 72)
+        self.assertEqual(analysis["percentile"], 72)
+        self.assertGreater(analysis["z_score"], 0.45)
+        self.assertEqual(analysis["deviation_to_seasonal_mean_pct"], 16.4)
+        self.assertEqual(analysis["deviation_to_seasonal_mean_m3s"], 60.0)
+        self.assertEqual(analysis["deviation_to_seasonal_median_m3s"], 70.0)
+        self.assertEqual(analysis["level_label"], "normal")
         self.assertEqual(analysis["trend_label"], "↗ en hausse depuis 3 jours")
+        self.assertIn("january", analysis["seasonal_sensitivity"])
+        self.assertIn("august", analysis["seasonal_sensitivity"])
+        self.assertEqual(analysis["seasonal_sensitivity"]["august"]["percentile"], 98)
+        self.assertEqual(analysis["seasonal_sensitivity"]["january"]["percentile"], 22)
 
         nearby = svc.find_nearby(lat=48.8566, lon=2.3522, radius_km=20.0)
         self.assertGreaterEqual(len(nearby), 1)

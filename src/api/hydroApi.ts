@@ -10,6 +10,9 @@ import {
   DataSourceItem,
   IngestionStatusResponse,
   HydrologicalAnalysis,
+  MappingResponse,
+  RiverDataMappingItem,
+  MappingQualityAuditSummary,
 } from '../types/hydrology';
 import { getCurrentFirebaseIdToken } from '../auth/firebase';
 
@@ -61,6 +64,18 @@ export const hydroApi = {
     return fetchJson<HydrologicalAnalysis>(
       `/api/rivers/${encodeURIComponent(riverId)}/analysis${q}`
     );
+  },
+
+  async getRiverAnomalies(
+    riverId: string,
+    segmentId?: string,
+    flow?: number
+  ): Promise<any> {
+    const params = new URLSearchParams();
+    if (segmentId) params.set('segment_id', segmentId);
+    if (flow !== undefined) params.set('flow', String(flow));
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return fetchJson<any>(`/api/rivers/${encodeURIComponent(riverId)}/anomalies${qs}`);
   },
 
   async getRiverSegments(riverId: string): Promise<RiverSegment[]> {
@@ -160,6 +175,31 @@ export const hydroApi = {
     return fetchJson('/api/admin/ingestion/trigger', {
       method: 'POST',
       body: JSON.stringify({ job_name: jobName }),
+    });
+  },
+
+  async getRiverDataMapping(params?: {
+    source?: string;
+    river_id?: string;
+    min_confidence?: number;
+  }): Promise<MappingResponse> {
+    const q = new URLSearchParams();
+    if (params?.source) q.set('source', params.source);
+    if (params?.river_id) q.set('river_id', params.river_id);
+    if (params?.min_confidence !== undefined) q.set('min_confidence', String(params.min_confidence));
+    const url = `/api/admin/mapping${q.toString() ? `?${q.toString()}` : ''}`;
+    return fetchJson<MappingResponse>(url);
+  },
+
+  async recomputeRiverDataMapping(): Promise<{
+    success: boolean;
+    message: string;
+    run: any;
+    audit_summary: MappingQualityAuditSummary;
+    items: RiverDataMappingItem[];
+  }> {
+    return fetchJson('/api/admin/mapping/recompute', {
+      method: 'POST',
     });
   },
 };

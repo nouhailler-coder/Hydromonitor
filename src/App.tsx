@@ -13,6 +13,8 @@ import {
   ShieldCheck,
   UserCheck,
   Navigation,
+  FileText,
+  Map,
 } from 'lucide-react';
 import { hydroApi } from './api/hydroApi';
 import {
@@ -30,6 +32,7 @@ import {
 } from './types/hydrology';
 import { HydroMapCanvas } from './map/HydroMapCanvas';
 import { RiverDossierPanel } from './components/RiverDossierPanel';
+import { HydrologicalHealthCardPage } from './components/HydrologicalHealthCardPage';
 import { AdminModal } from './pages/AdminModal';
 import { AboutSourcesModal } from './pages/AboutSourcesModal';
 import { AuthModal } from './pages/AuthModal';
@@ -47,6 +50,9 @@ export default function App() {
   const [segments, setSegments] = useState<RiverSegment[]>([]);
   const [stations, setStations] = useState<TemperatureStation[]>([]);
   const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
+
+  // View mode: 'health-card' (la Fiche Santé Hydrologique) or 'map' (la carte SIG & dossier)
+  const [viewMode, setViewMode] = useState<'health-card' | 'map'>('health-card');
 
   // Time series state
   const [dischargeDays, setDischargeDays] = useState<number>(30);
@@ -69,12 +75,19 @@ export default function App() {
   const [verifiedProfile, setVerifiedProfile] = useState<any>(null);
   const [activeModal, setActiveModal] = useState<'admin' | 'about' | 'auth' | null>(null);
 
-  // Sync URL path for SPA routes (/rivers/:id, /admin, /about, /login)
+  // Sync URL path for SPA routes (/rivers/:id, /rivers/:id/sante, /sante, /admin, /about, /login)
   useEffect(() => {
     const path = window.location.pathname;
+    if (path.includes('/sante') || path.includes('/fiche-sante') || path.includes('/health')) {
+      setViewMode('health-card');
+    }
     if (path.startsWith('/rivers/')) {
-      const slug = path.replace('/rivers/', '').trim();
+      const parts = path.replace('/rivers/', '').split('/');
+      const slug = parts[0]?.trim();
       if (slug) setSelectedRiverId(slug);
+      if (parts[1] === 'sante' || parts[1] === 'fiche-sante') {
+        setViewMode('health-card');
+      }
     } else if (path === '/admin') {
       setActiveModal('admin');
     } else if (path === '/about') {
@@ -208,11 +221,18 @@ export default function App() {
     setSelectedRiverId(riverId);
     setSearchFocused(false);
     setNearbyBanner(null);
-    window.history.replaceState({}, '', `/rivers/${riverId}`);
+    const targetUrl = viewMode === 'health-card' ? `/rivers/${riverId}/sante` : `/rivers/${riverId}`;
+    window.history.replaceState({}, '', targetUrl);
   };
 
   const handleSelectSegmentProfile = (segmentId: string) => {
     setActiveSegmentId(segmentId);
+  };
+
+  const handleToggleViewMode = (mode: 'health-card' | 'map') => {
+    setViewMode(mode);
+    const targetUrl = mode === 'health-card' ? `/rivers/${selectedRiverId}/sante` : `/rivers/${selectedRiverId}`;
+    window.history.replaceState({}, '', targetUrl);
   };
 
   // Nearby search (PostGIS ST_DWithin equivalent around Paris 48.8566, 2.3522)
@@ -234,8 +254,8 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[#070D17] text-[#F0F6FC] overflow-hidden">
-      {/* TOP SCIENTIFIC COMMAND BAR */}
-      <header className="h-14 shrink-0 bg-[#0D1626]/95 border-b border-slate-800/90 px-4 flex items-center justify-between gap-4 z-30">
+      {/* TOP COMMAND BAR */}
+      <header className="h-14 shrink-0 bg-[#0D1626]/95 border-b border-slate-800/90 px-4 flex items-center justify-between gap-4 z-30 print:hidden">
         {/* Brand & Title */}
         <div className="flex items-center gap-3 shrink-0">
           <div className="w-8 h-8 rounded-lg bg-[#0EA5E9]/15 border border-[#0EA5E9]/40 flex items-center justify-center text-[#38BDF8]">
@@ -257,7 +277,7 @@ export default function App() {
         </div>
 
         {/* Search Input + Quick River Switchers (Seine, Loire, Rhône) */}
-        <div className="flex items-center gap-2.5 flex-1 max-w-2xl">
+        <div className="flex items-center gap-2.5 flex-1 max-w-xl">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
             <input
@@ -336,7 +356,7 @@ export default function App() {
                   onClick={() => handleSelectRiver(r.id)}
                   className={`px-2.5 py-1 rounded text-xs font-mono transition ${
                     active
-                      ? 'bg-[#0EA5E9] text-slate-950 font-semibold shadow'
+                      ? 'bg-[#0EA5E9] text-slate-950 font-bold shadow'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
@@ -350,11 +370,41 @@ export default function App() {
           <button
             type="button"
             onClick={handleNearbyParisSearch}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-[#38BDF8]/60 text-xs font-mono text-slate-300 hover:text-[#38BDF8] transition shrink-0"
+            className="hidden sm:flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-[#38BDF8]/60 text-xs font-mono text-slate-300 hover:text-[#38BDF8] transition shrink-0"
             title="Diagnostic spatial autour de Paris"
           >
             <Navigation className="w-3.5 h-3.5 text-[#38BDF8]" />
-            <span>Autour de Paris</span>
+            <span className="hidden lg:inline">Paris</span>
+          </button>
+        </div>
+
+        {/* View Mode Switcher: Fiche Santé vs Carte SIG */}
+        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 shrink-0">
+          <button
+            type="button"
+            onClick={() => handleToggleViewMode('health-card')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-mono transition ${
+              viewMode === 'health-card'
+                ? 'bg-[#0EA5E9] text-slate-950 font-bold shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            title="Fiche Santé Hydrologique officielle"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Fiche Santé</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleToggleViewMode('map')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-mono transition ${
+              viewMode === 'map'
+                ? 'bg-[#0EA5E9] text-slate-950 font-bold shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            title="Exploration cartographique et spatiale"
+          >
+            <Map className="w-3.5 h-3.5" />
+            <span>Carte SIG</span>
           </button>
         </div>
 
@@ -366,7 +416,7 @@ export default function App() {
             className="px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-slate-700 text-xs text-slate-300 flex items-center gap-1.5 transition"
           >
             <Info className="w-3.5 h-3.5 text-[#38BDF8]" />
-            <span className="hidden md:inline">Sources &amp; Architecture</span>
+            <span className="hidden md:inline">Sources</span>
           </button>
 
           <button
@@ -375,7 +425,7 @@ export default function App() {
             className="px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-slate-700 text-xs text-slate-300 flex items-center gap-1.5 transition"
           >
             <Database className="w-3.5 h-3.5 text-[#10B981]" />
-            <span className="hidden md:inline">Admin &amp; Imports</span>
+            <span className="hidden md:inline">Admin</span>
           </button>
 
           <button
@@ -397,7 +447,7 @@ export default function App() {
             ) : (
               <>
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Connexion Firebase</span>
+                <span>Connexion</span>
               </>
             )}
           </button>
@@ -406,7 +456,7 @@ export default function App() {
 
       {/* Optional Nearby Spatial Query Notification Bar */}
       {nearbyBanner && (
-        <div className="bg-[#0EA5E9]/15 border-b border-[#0EA5E9]/40 px-4 py-1.5 text-xs font-mono text-[#38BDF8] flex items-center justify-between">
+        <div className="bg-[#0EA5E9]/15 border-b border-[#0EA5E9]/40 px-4 py-1.5 text-xs font-mono text-[#38BDF8] flex items-center justify-between print:hidden">
           <div className="flex items-center gap-2">
             <MapPin className="w-3.5 h-3.5" />
             <span>{nearbyBanner}</span>
@@ -421,37 +471,61 @@ export default function App() {
         </div>
       )}
 
-      {/* MAIN WORKSPACE: MAPLIBRE GL CANVAS + RIVER DOSSIER INSPECTOR */}
-      <main className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
-        <div className="flex-1 h-[45vh] lg:h-full relative">
-          <HydroMapCanvas
-            selectedRiver={selectedRiver}
-            selectedStationId={selectedStationId}
-            onSelectRiver={handleSelectRiver}
-            onSelectStation={handleSelectStation}
-          />
-        </div>
+      {/* MAIN VIEW AREA: EITHER FICHE SANTÉ HYDROLOGIQUE OR CARTE SIG & DOSSIER */}
+      {viewMode === 'health-card' && selectedRiver ? (
+        <HydrologicalHealthCardPage
+          river={selectedRiver}
+          analysis={analysis}
+          activeSegmentId={activeSegmentId}
+          onSelectSegmentProfile={handleSelectSegmentProfile}
+          basin={basin}
+          segments={segments}
+          stations={stations}
+          selectedStationId={selectedStationId}
+          onSelectStation={(stId) => handleSelectStation(stId)}
+          dischargeHistory={dischargeHistory}
+          dischargeDays={dischargeDays}
+          onChangeDischargeDays={setDischargeDays}
+          forecastSteps={forecastSteps}
+          temperatureHistory={temperatureHistory}
+          dataSources={dataSources}
+          riversList={riversList}
+          onSelectRiver={handleSelectRiver}
+          onBackToMap={() => handleToggleViewMode('map')}
+        />
+      ) : (
+        <main className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
+          <div className="flex-1 h-[45vh] lg:h-full relative">
+            <HydroMapCanvas
+              selectedRiver={selectedRiver}
+              selectedStationId={selectedStationId}
+              onSelectRiver={handleSelectRiver}
+              onSelectStation={handleSelectStation}
+            />
+          </div>
 
-        {selectedRiver && (
-          <RiverDossierPanel
-            river={selectedRiver}
-            analysis={analysis}
-            activeSegmentId={activeSegmentId}
-            onSelectSegmentProfile={handleSelectSegmentProfile}
-            basin={basin}
-            segments={segments}
-            stations={stations}
-            selectedStationId={selectedStationId}
-            onSelectStation={(stId) => handleSelectStation(stId)}
-            dischargeHistory={dischargeHistory}
-            dischargeDays={dischargeDays}
-            onChangeDischargeDays={setDischargeDays}
-            forecastSteps={forecastSteps}
-            temperatureHistory={temperatureHistory}
-            dataSources={dataSources}
-          />
-        )}
-      </main>
+          {selectedRiver && (
+            <RiverDossierPanel
+              river={selectedRiver}
+              analysis={analysis}
+              activeSegmentId={activeSegmentId}
+              onSelectSegmentProfile={handleSelectSegmentProfile}
+              basin={basin}
+              segments={segments}
+              stations={stations}
+              selectedStationId={selectedStationId}
+              onSelectStation={(stId) => handleSelectStation(stId)}
+              dischargeHistory={dischargeHistory}
+              dischargeDays={dischargeDays}
+              onChangeDischargeDays={setDischargeDays}
+              forecastSteps={forecastSteps}
+              temperatureHistory={temperatureHistory}
+              dataSources={dataSources}
+              onOpenHealthCard={() => handleToggleViewMode('health-card')}
+            />
+          )}
+        </main>
+      )}
 
       {/* MODALS FOR /admin, /about, /login */}
       <AdminModal

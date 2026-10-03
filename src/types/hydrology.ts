@@ -9,6 +9,68 @@ export type HydrologicalRegimeCode =
   | 'BELOW_NORMAL'
   | 'LOW_FLOW';
 
+export type HydrologicalAnomalyLevel =
+  | 'VERY_LOW' // < P10 (très faible)
+  | 'MODERATE_LOW' // P10-P25
+  | 'NORMAL' // P25-P75 (normal)
+  | 'HIGH' // P75-P90 (élevé)
+  | 'EXCEPTIONAL'; // > P90 (exceptionnel)
+
+export interface MonthlyClimatologyBenchmark {
+  month_index: number; // 1-12
+  month_short: string;
+  month_name: string;
+  mean_m3s: number;
+  median_m3s: number;
+  std_m3s: number;
+  q10_m3s: number;
+  q25_m3s: number;
+  q75_m3s: number;
+  q90_m3s: number;
+  q98_m3s: number;
+}
+
+export interface SeasonalComparisonStep {
+  month_name: string;
+  mean_m3s: number;
+  percentile: number;
+  z_score: number;
+  level_label: string;
+  interpretation: string;
+}
+
+export interface HydrologicalAnomalyReport {
+  reference_station_label: string;
+  flow_m3s: number;
+  period_of_year_label: string;
+  day_of_year: number;
+  percentile: number;
+  z_score: number;
+  deviation_to_seasonal_mean_m3s: number;
+  deviation_to_seasonal_mean_pct: number;
+  deviation_to_seasonal_median_m3s: number;
+  deviation_to_seasonal_median_pct: number;
+  deviation_to_annual_mean_m3s: number;
+  deviation_to_annual_mean_pct: number;
+  level: HydrologicalAnomalyLevel;
+  level_label: string;
+  ladder_position_pct: number;
+  level_summary: string;
+  seasonal_mean_m3s: number;
+  seasonal_median_m3s: number;
+  seasonal_std_m3s: number;
+  annual_mean_m3s: number;
+  quantiles_for_date: HistoricalQuantiles;
+  monthly_benchmarks: MonthlyClimatologyBenchmark[];
+  comparative_simulation: {
+    test_flow_m3s: number;
+    january: SeasonalComparisonStep;
+    august: SeasonalComparisonStep;
+    current_month: SeasonalComparisonStep;
+    takeaway: string;
+  };
+}
+
 export interface HistoricalQuantiles {
   q10: number;
   q25: number;
@@ -83,6 +145,7 @@ export interface HydrologicalAnalysis {
     prob_exceed_q75_pct: number;
     outlook_summary: string;
   };
+  anomaly_report: HydrologicalAnomalyReport;
   diagnostic_headline: string;
   diagnostic_explanation: string;
 }
@@ -170,6 +233,11 @@ export interface RiverSegment {
     longitude: number;
     upstream_area_km2: number;
     elevation_m: number;
+    basin_match?: boolean;
+    upstream_area_ratio?: number;
+    river_order_match?: boolean;
+    direction_match?: boolean;
+    flow_direction_diff_deg?: number;
   };
 }
 
@@ -315,4 +383,50 @@ export interface IngestionStatusResponse {
     idempotent: boolean;
   }>;
   runs: IngestionRunItem[];
+}
+
+export interface RiverDataMappingItem {
+  id: string;
+  river_segment_id: string;
+  segment_label: string;
+  river_id: string;
+  river_name: string;
+  strahler_order: number;
+  source: 'GLOFAS' | 'HUBEAU';
+  source_id: string;
+  source_label: string;
+  distance_m: number;
+  basin_match: boolean;
+  upstream_area_ratio: number;
+  upstream_area_segment_km2: number;
+  upstream_area_source_km2: number;
+  river_order_match: boolean;
+  direction_match: boolean;
+  flow_direction_diff_deg?: number;
+  confidence_score: number;
+  confidence_level: 'HIGH' | 'MEDIUM' | 'LOW';
+  mapping_version: string;
+  created_at: string;
+  notes?: string;
+}
+
+export interface MappingQualityAuditSummary {
+  total_mappings: number;
+  mean_confidence_score: number;
+  glofas_mappings_count: number;
+  hubeau_mappings_count: number;
+  high_confidence_count: number;
+  medium_confidence_count: number;
+  low_confidence_count: number;
+  basin_compatibility_pct: number;
+  upstream_area_compatibility_pct: number;
+  river_order_compatibility_pct: number;
+  direction_compatibility_pct: number;
+  algorithm_version: string;
+  last_audit_at: string;
+}
+
+export interface MappingResponse {
+  audit_summary: MappingQualityAuditSummary;
+  items: RiverDataMappingItem[];
 }
