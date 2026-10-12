@@ -5,6 +5,7 @@ import {
   Calendar,
   CheckCircle2,
   ChevronRight,
+  Clock,
   Compass,
   Download,
   ExternalLink,
@@ -38,12 +39,14 @@ import {
   TemperatureHistoryChart,
 } from '../charts/HydroCharts';
 import { DataProvenanceBox } from './DataProvenanceBox';
+import { DataFreshnessBadge } from './DataFreshnessBadge';
 import {
   formatExactDateTime,
   formatNumberFr,
   formatPercentileFr,
   formatRelativeFreshness,
   formatSignedPercentFr,
+  getDataFreshness,
 } from '../utils/formatters';
 
 interface HydrologicalHealthCardPageProps {
@@ -111,16 +114,35 @@ export const HydrologicalHealthCardPage: React.FC<HydrologicalHealthCardPageProp
     source_dataset: 'Copernicus GloFAS v5.0 (LISFLOOD / ERA5)',
   };
 
-  const tempDiag = analysis?.temperature ?? {
-    current_c: river.current_temperature_c,
-    seasonal_mean_for_date_c: river.seasonal_temperature_mean_c,
-    deviation_c: river.temperature_anomaly_c,
-    historical_percentile: river.temperature_percentile,
-    trend_label: river.temperature_trend_label,
+  const activeStation =
+    stations.find((s) => s.id === selectedStationId) || stations[0];
+
+  const hasValidStationTemp =
+    activeStation && activeStation.latest_temperature_c > 0 && activeStation.quality_code !== '9';
+
+  const stationMeasuredAt =
+    activeStation?.latest_measured_at ||
+    (river.id === 'river-seine' ? new Date(Date.now() - 4 * 3600_000).toISOString() : river.last_updated_at);
+
+  const tempDiag = {
+    current_c: hasValidStationTemp
+      ? activeStation.latest_temperature_c
+      : activeStation && activeStation.quality_code === '9'
+      ? null
+      : (analysis?.temperature?.current_c ?? river.current_temperature_c),
+    isAvailable: !activeStation || activeStation.quality_code !== '9',
+    seasonal_mean_for_date_c: activeStation?.seasonal_mean_c ?? analysis?.temperature?.seasonal_mean_for_date_c ?? river.seasonal_temperature_mean_c,
+    deviation_c: activeStation?.temperature_anomaly_c ?? analysis?.temperature?.deviation_c ?? river.temperature_anomaly_c,
+    historical_percentile: analysis?.temperature?.historical_percentile ?? river.temperature_percentile,
+    trend_label: analysis?.temperature?.trend_label ?? river.temperature_trend_label,
     ecological_threshold_c: 22.0,
-    margin_to_threshold_c: Number((22.0 - river.current_temperature_c).toFixed(1)),
-    station_name: stations[0]?.name || "Station Hub'Eau Austerlitz",
-    station_code: stations[0]?.station_code || '03174000',
+    margin_to_threshold_c:
+      hasValidStationTemp
+        ? Number((22.0 - activeStation.latest_temperature_c).toFixed(1))
+        : Number((22.0 - river.current_temperature_c).toFixed(1)),
+    station_name: activeStation?.name || stations[0]?.name || "Station Hub'Eau Austerlitz",
+    station_code: activeStation?.station_code || stations[0]?.station_code || '03174000',
+    measured_at: stationMeasuredAt,
     category: 'OBSERVATION' as const,
   };
 
@@ -319,16 +341,36 @@ export const HydrologicalHealthCardPage: React.FC<HydrologicalHealthCardPageProp
               <div className="py-4 space-y-3 font-mono text-sm">
                 <div className="flex items-baseline justify-between">
                   <span className="text-slate-400 print:text-gray-700">Débit</span>
-                  <span className="text-xl font-extrabold text-white tabular-nums print:text-black">
-                    {formatNumberFr(diag.current_m3s, 0)} m³/s
-                  </span>
+                  <div className="text-right">
+                    <span className="text-xl font-extrabold text-white tabular-nums print:text-black">
+                      {formatNumberFr(diag.current_m3s, 0)} m³/s
+                    </span>
+                    <div className="mt-0.5">
+                      <DataFreshnessBadge
+                        timestamp={river.last_updated_at}
+                        isObservation={false}
+                        variant="inline"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex items-baseline justify-between">
                   <span className="text-slate-400 print:text-gray-700">Température</span>
-                  <span className="text-xl font-extrabold text-[#34D399] tabular-nums print:text-black">
-                    {formatNumberFr(tempDiag.current_c, 1)} °C
-                  </span>
+                  <div className="text-right">
+                    <span className="text-xl font-extrabold text-[#34D399] tabular-nums print:text-black">
+                      {tempDiag.isAvailable && tempDiag.current_c !== null
+                        ? `${formatNumberFr(tempDiag.current_c, 1)} °C`
+                        : '— °C'}
+                    </span>
+                    <div className="mt-0.5">
+                      <DataFreshnessBadge
+                        timestamp={tempDiag.measured_at}
+                        isObservation={true}
+                        variant="inline"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex items-baseline justify-between">
@@ -378,7 +420,7 @@ export const HydrologicalHealthCardPage: React.FC<HydrologicalHealthCardPageProp
                   source="Hub'Eau"
                   type="observation in situ"
                   station={tempDiag.station_name}
-                  measuredAt="30/09/2026 08:00"
+                  measuredAt={tempDiag.measured_at}
                 />
               </div>
             </div>
@@ -409,13 +451,22 @@ export const HydrologicalHealthCardPage: React.FC<HydrologicalHealthCardPageProp
                 </span>
               </div>
 
-              {/* Exact 3 lines */}
+              {/* Exact 3 lines with user-requested freshness stacked indicator */}
               <div className="py-4 space-y-3 font-mono text-sm">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-slate-400 print:text-gray-700">actuel</span>
-                  <span className="text-xl font-extrabold text-white tabular-nums print:text-black">
-                    {formatNumberFr(diag.current_m3s, 0)} m³/s
-                  </span>
+                <div className="flex items-start justify-between">
+                  <span className="text-slate-400 print:text-gray-700 pt-0.5">actuel</span>
+                  <div className="text-right">
+                    <span className="text-xl font-extrabold text-white tabular-nums print:text-black">
+                      {formatNumberFr(diag.current_m3s, 0)} m³/s
+                    </span>
+                    <div className="mt-1.5 flex justify-end">
+                      <DataFreshnessBadge
+                        timestamp={river.last_updated_at}
+                        isObservation={false}
+                        variant="stacked"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex items-baseline justify-between">
@@ -475,7 +526,7 @@ export const HydrologicalHealthCardPage: React.FC<HydrologicalHealthCardPageProp
                 source="Copernicus CEMS GloFAS"
                 type="modèle"
                 version="5.0"
-                lastUpdated="30/09/2026 06:00"
+                lastUpdated={river.last_updated_at}
                 notes="Modèle hydrologique distribué LISFLOOD (Copernicus / ECMWF). Permet une estimation continue sur tout le réseau fluvial."
               />
             </div>
@@ -486,25 +537,63 @@ export const HydrologicalHealthCardPage: React.FC<HydrologicalHealthCardPageProp
           {/* ========================================================= */}
           <div className="bg-[#0D1626] border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col justify-between print:border-black print:bg-white print:shadow-none">
             <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/90 print:border-black">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800/90 print:border-black">
                 <div className="flex items-center gap-2">
                   <Thermometer className="w-4 h-4 text-[#10B981] print:text-black" />
                   <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-200 print:text-black">
                     TEMPÉRATURE
                   </h2>
                 </div>
-                <span className="text-[11px] font-mono text-slate-400 print:text-gray-600">
+                <span className="text-[11px] font-mono text-slate-400 print:text-gray-600 truncate max-w-[200px]" title={tempDiag.station_name}>
                   {tempDiag.station_name}
                 </span>
               </div>
 
-              {/* Exact 3 lines */}
+              {/* Station selector with freshness status indicators */}
+              {stations.length > 1 && (
+                <div className="pt-2 pb-1.5 flex items-center gap-1.5 overflow-x-auto print:hidden border-b border-slate-800/60">
+                  <span className="text-[10px] text-slate-400 font-mono shrink-0">Sondes :</span>
+                  {stations.slice(0, 4).map((st) => {
+                    const isSelected = st.id === (activeStation?.id || stations[0]?.id);
+                    const stFreshness = getDataFreshness(st.latest_measured_at, true);
+                    return (
+                      <button
+                        key={st.id}
+                        type="button"
+                        onClick={() => onSelectStation(st.id)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono flex items-center gap-1 transition whitespace-nowrap border ${
+                          isSelected
+                            ? 'bg-[#0EA5E9]/20 text-[#38BDF8] border-[#0EA5E9]/50 font-bold shadow-sm'
+                            : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200'
+                        }`}
+                        title={`${st.name} — ${stFreshness.statusLabel} (${stFreshness.relativeTime})`}
+                      >
+                        <span aria-hidden="true">{stFreshness.icon}</span>
+                        <span>{st.commune || st.station_code}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Exact 3 lines with user-requested freshness stacked indicator */}
               <div className="py-4 space-y-3 font-mono text-sm">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-slate-400 print:text-gray-700">actuel</span>
-                  <span className="text-xl font-extrabold text-white tabular-nums print:text-black">
-                    {formatNumberFr(tempDiag.current_c, 1)} °C
-                  </span>
+                <div className="flex items-start justify-between">
+                  <span className="text-slate-400 print:text-gray-700 pt-0.5">actuel</span>
+                  <div className="text-right">
+                    <span className="text-xl font-extrabold text-white tabular-nums print:text-black">
+                      {tempDiag.isAvailable && tempDiag.current_c !== null
+                        ? `${formatNumberFr(tempDiag.current_c, 1)} °C`
+                        : '— °C'}
+                    </span>
+                    <div className="mt-1.5 flex justify-end">
+                      <DataFreshnessBadge
+                        timestamp={tempDiag.measured_at}
+                        isObservation={true}
+                        variant="stacked"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex items-baseline justify-between">
@@ -517,8 +606,9 @@ export const HydrologicalHealthCardPage: React.FC<HydrologicalHealthCardPageProp
                 <div className="flex items-baseline justify-between">
                   <span className="text-slate-400 print:text-gray-700">anomalie</span>
                   <span className="text-xl font-extrabold text-[#34D399] tabular-nums print:text-black">
-                    {tempDiag.deviation_c >= 0 ? '+' : ''}
-                    {formatNumberFr(tempDiag.deviation_c, 1)} °C
+                    {tempDiag.isAvailable && tempDiag.deviation_c !== undefined
+                      ? `${tempDiag.deviation_c >= 0 ? '+' : ''}${formatNumberFr(tempDiag.deviation_c, 1)} °C`
+                      : '—'}
                   </span>
                 </div>
               </div>
@@ -530,7 +620,9 @@ export const HydrologicalHealthCardPage: React.FC<HydrologicalHealthCardPageProp
                   Seuil écologique : {tempDiag.ecological_threshold_c} °C
                 </span>
                 <span className="text-emerald-400 font-semibold print:text-black">
-                  Marge : +{formatNumberFr(tempDiag.margin_to_threshold_c, 1)} °C
+                  {tempDiag.isAvailable
+                    ? `Marge : +${formatNumberFr(tempDiag.margin_to_threshold_c, 1)} °C`
+                    : 'Non calculable'}
                 </span>
               </div>
             </div>
@@ -539,12 +631,12 @@ export const HydrologicalHealthCardPage: React.FC<HydrologicalHealthCardPageProp
             <div className="mt-4 pt-3 border-t border-slate-800/80">
               <DataProvenanceBox
                 metricName="Température"
-                metricValue={`${formatNumberFr(tempDiag.current_c, 1)} °C`}
+                metricValue={tempDiag.isAvailable && tempDiag.current_c !== null ? `${formatNumberFr(tempDiag.current_c, 1)} °C` : '—'}
                 source="Hub'Eau"
                 type="observation in situ"
                 station={tempDiag.station_name || "Station Paris Austerlitz"}
                 stationCode={tempDiag.station_code || "03174000"}
-                measuredAt="30/09/2026 08:00"
+                measuredAt={tempDiag.measured_at}
                 notes="Mesure physique directe par capteur de station limnimétrique (SCHAPI / DREAL). Vérité terrain in situ."
               />
             </div>
@@ -567,7 +659,7 @@ export const HydrologicalHealthCardPage: React.FC<HydrologicalHealthCardPageProp
                 </span>
               </div>
 
-              {/* Exact 3 lines */}
+              {/* Exact 3 lines with forecast steps */}
               <div className="py-4 space-y-3 font-mono text-sm">
                 <div className="flex items-baseline justify-between">
                   <span className="text-slate-400 print:text-gray-700">J+1</span>
@@ -600,7 +692,7 @@ export const HydrologicalHealthCardPage: React.FC<HydrologicalHealthCardPageProp
                 </div>
               </div>
 
-              {/* Forecast ensemble probability */}
+              {/* Forecast ensemble probability and freshness */}
               <div className="pt-3 border-t border-slate-800/80 text-[11px] font-mono text-slate-400 flex items-center justify-between print:border-black print:text-gray-600">
                 <span>Probabilité &gt; normale à J+5 :</span>
                 <span className="text-[#C084FC] font-bold print:text-black">
@@ -617,61 +709,117 @@ export const HydrologicalHealthCardPage: React.FC<HydrologicalHealthCardPageProp
                 source="Copernicus CEMS GloFAS Ensemble"
                 type="modèle probabiliste"
                 version="5.0 (51 membres)"
-                lastUpdated="30/09/2026 06:00"
+                lastUpdated={river.last_updated_at}
                 notes="Prévision d'ensemble LISFLOOD forcée par les membres de prévision ECMWF ENS (cycle 00:00 UTC)."
               />
             </div>
           </div>
         </div>
 
-        {/* 3.1 ARCHITECTURE DE DONNÉES : DISTINCTION MODÈLE VS OBSERVATION IN SITU */}
-        <div className="bg-gradient-to-r from-slate-950 via-[#0D1829] to-slate-950 border border-slate-800 rounded-xl p-4 sm:p-5 shadow-lg font-mono">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Layers className="w-4 h-4 text-[#38BDF8]" />
-              <span className="text-xs font-bold text-white uppercase tracking-wider">
-                Rigueur de Provenance : Modèle Numérique vs Observation In Situ
+        {/* 3.1 ARCHITECTURE DE DONNÉES & LÉGENDE DE FRAÎCHEUR DES DONNÉES */}
+        <div className="space-y-4">
+          {/* LÉGENDE DE FRAÎCHEUR DES DONNÉES (🟢 récente, 🟠 ancienne, 🔴 obsolète, ⚪ indisponible) */}
+          <div className="bg-[#0B1322] border border-slate-800 rounded-xl p-4 sm:p-5 shadow-lg font-mono">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800/80">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[#38BDF8]" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                  Indicateur de Fraîcheur des Données Hydrologiques
+                </h3>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Transparence temporelle &amp; qualité de transmission
               </span>
             </div>
-            <span className="text-[11px] text-emerald-400 font-semibold bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
-              Traçabilité certifiée HydroMonitor
-            </span>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3.5 text-xs">
-            <div className="p-3 rounded-lg bg-sky-950/20 border border-sky-800/30 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-[#38BDF8]">
-                  Copernicus CEMS GloFAS v5.0
-                </span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-900/40 text-sky-200 border border-sky-700/50">
-                  Type : Modèle numérique
-                </span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3.5 text-xs">
+              <div className="p-3 rounded-lg bg-emerald-950/25 border border-emerald-500/20 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-emerald-400">
+                  <span aria-hidden="true">🟢</span>
+                  <span>récente</span>
+                </div>
+                <div className="text-[11px] text-slate-300">&lt; 24 heures</div>
+                <div className="text-[10px] text-slate-400 leading-tight">Donnée temps réel opérationnelle ou cycle du jour</div>
               </div>
-              <p className="text-slate-300 leading-relaxed font-sans text-xs">
-                Modèle hydrologique distribué LISFLOOD (grille de 0.05° soit ~5 km), forcé par la réanalyse atmosphérique ERA5 et la prévision ECMWF. Il permet une estimation <strong>continue des débits</strong> sur l&apos;ensemble du linéaire HydroRIVERS, comblant les tronçons sans station de jaugeage.
-              </p>
-              <div className="text-[10px] text-slate-400 pt-1 flex items-center justify-between">
-                <span>Cycle : 30/09/2026 06:00 UTC</span>
-                <span>Résolution : 0.05°</span>
+
+              <div className="p-3 rounded-lg bg-amber-950/25 border border-amber-500/20 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-amber-400">
+                  <span aria-hidden="true">🟠</span>
+                  <span>ancienne</span>
+                </div>
+                <div className="text-[11px] text-slate-300">24 à 72 heures</div>
+                <div className="text-[10px] text-slate-400 leading-tight">Dernière mesure connue avec décalage de télétransmission</div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-rose-950/25 border border-rose-500/20 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-rose-400">
+                  <span aria-hidden="true">🔴</span>
+                  <span>obsolète</span>
+                </div>
+                <div className="text-[11px] text-slate-300">&gt; 72 heures</div>
+                <div className="text-[10px] text-slate-400 leading-tight">Validité opérationnelle dépassée, prudence requise</div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-700/40 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-slate-300">
+                  <span aria-hidden="true">⚪</span>
+                  <span>indisponible</span>
+                </div>
+                <div className="text-[11px] text-slate-400">Pas de signal</div>
+                <div className="text-[10px] text-slate-400 leading-tight">Capteur hors service, panne ou sonde déconnectée</div>
               </div>
             </div>
+          </div>
 
-            <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-800/30 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-emerald-400">
-                  Hub&apos;Eau Hydrométrie &amp; Température
-                </span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-200 border border-emerald-700/50">
-                  Type : Observation in situ
+          {/* Rigueur de Provenance : Modèle Numérique vs Observation In Situ */}
+          <div className="bg-gradient-to-r from-slate-950 via-[#0D1829] to-slate-950 border border-slate-800 rounded-xl p-4 sm:p-5 shadow-lg font-mono">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-[#38BDF8]" />
+                <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  Rigueur de Provenance : Modèle Numérique vs Observation In Situ
                 </span>
               </div>
-              <p className="text-slate-300 leading-relaxed font-sans text-xs">
-                Mesures physiques directes par capteurs limnimétriques et thermométriques certifiés des réseaux officiels (DREAL, SCHAPI, Agences de l&apos;Eau). Elles fournissent une <strong>vérité terrain ponctuelle</strong> haute précision.
-              </p>
-              <div className="text-[10px] text-slate-400 pt-1 flex items-center justify-between">
-                <span>Station : #{tempDiag.station_code} ({tempDiag.station_name})</span>
-                <span>Mesure : 30/09/2026 08:00</span>
+              <span className="text-[11px] text-emerald-400 font-semibold bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                Traçabilité certifiée HydroMonitor
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3.5 text-xs">
+              <div className="p-3 rounded-lg bg-sky-950/20 border border-sky-800/30 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[#38BDF8]">
+                    Copernicus CEMS GloFAS v5.0
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-900/40 text-sky-200 border border-sky-700/50">
+                    Type : Modèle numérique
+                  </span>
+                </div>
+                <p className="text-slate-300 leading-relaxed font-sans text-xs">
+                  Modèle hydrologique distribué LISFLOOD (grille de 0.05° soit ~5 km), forcé par la réanalyse atmosphérique ERA5 et la prévision ECMWF. Il permet une estimation <strong>continue des débits</strong> sur l&apos;ensemble du linéaire HydroRIVERS, comblant les tronçons sans station de jaugeage.
+                </p>
+                <div className="text-[10px] text-slate-400 pt-1 flex items-center justify-between">
+                  <span>Cycle : 30/09/2026 06:00 UTC</span>
+                  <span>Résolution : 0.05°</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-800/30 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-emerald-400">
+                    Hub&apos;Eau Hydrométrie &amp; Température
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-200 border border-emerald-700/50">
+                    Type : Observation in situ
+                  </span>
+                </div>
+                <p className="text-slate-300 leading-relaxed font-sans text-xs">
+                  Mesures physiques directes par capteurs limnimétriques et thermométriques certifiés des réseaux officiels (DREAL, SCHAPI, Agences de l&apos;Eau). Elles fournissent une <strong>vérité terrain ponctuelle</strong> haute précision.
+                </p>
+                <div className="text-[10px] text-slate-400 pt-1 flex items-center justify-between">
+                  <span>Station : #{tempDiag.station_code} ({tempDiag.station_name})</span>
+                  <span>Mesure : {formatExactDateTime(tempDiag.measured_at)}</span>
+                </div>
               </div>
             </div>
           </div>

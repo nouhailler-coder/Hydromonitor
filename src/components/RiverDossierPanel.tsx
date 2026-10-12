@@ -25,6 +25,7 @@ import {
 } from '../types/hydrology';
 import { CategoryBadge } from './CategoryBadge';
 import { DataProvenanceBox } from './DataProvenanceBox';
+import { DataFreshnessBadge } from './DataFreshnessBadge';
 import {
   DischargeHistoryChart,
   EnsembleForecastChart,
@@ -205,6 +206,14 @@ export const RiverDossierPanel: React.FC<RiverDossierPanelProps> = ({
               <div className="text-xl font-bold text-slate-50 mt-0.5">
                 {formatNumberFr(diag.current_m3s, diag.current_m3s % 1 === 0 ? 0 : 1)} m³/s
               </div>
+              <div className="mt-1">
+                <DataFreshnessBadge
+                  timestamp={river.last_updated_at}
+                  isObservation={false}
+                  variant="stacked"
+                  size="sm"
+                />
+              </div>
             </div>
 
             {/* 2. Moyenne pour cette date */}
@@ -339,6 +348,14 @@ export const RiverDossierPanel: React.FC<RiverDossierPanelProps> = ({
                   {tempDiag.deviation_c >= 0 ? '+' : ''}
                   {formatNumberFr(tempDiag.deviation_c, 1)} °C vs moy.
                 </span>
+              </div>
+              <div className="mt-1.5 flex justify-end">
+                <DataFreshnessBadge
+                  timestamp={stations[0]?.latest_measured_at || river.last_updated_at}
+                  isObservation={true}
+                  variant="stacked"
+                  size="sm"
+                />
               </div>
               <div className="mt-1 text-[11px] text-slate-400 flex items-center justify-between">
                 <span>Moy. date: {formatNumberFr(tempDiag.seasonal_mean_for_date_c, 1)} °C</span>
@@ -509,15 +526,23 @@ export const RiverDossierPanel: React.FC<RiverDossierPanelProps> = ({
 
                   <div className="text-right shrink-0 font-mono tabular-nums">
                     <div className="font-bold text-base text-[#34D399]">
-                      {st.latest_temperature_c.toFixed(1)} °C
+                      {st.latest_temperature_c > 0 ? `${st.latest_temperature_c.toFixed(1)} °C` : '—'}
                     </div>
-                    {st.seasonal_mean_c !== undefined && (
+                    {st.seasonal_mean_c !== undefined && st.latest_temperature_c > 0 && (
                       <div className="text-[10px] text-slate-400">
                         Normale: {st.seasonal_mean_c.toFixed(1)} °C (
                         {(st.temperature_anomaly_c ?? 0) >= 0 ? '+' : ''}
                         {(st.temperature_anomaly_c ?? 0).toFixed(1)} °C)
                       </div>
                     )}
+                    <div className="mt-1 flex justify-end">
+                      <DataFreshnessBadge
+                        timestamp={st.latest_measured_at}
+                        isObservation={true}
+                        variant="stacked"
+                        size="sm"
+                      />
+                    </div>
                   </div>
                 </button>
               );

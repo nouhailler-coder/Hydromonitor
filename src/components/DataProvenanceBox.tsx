@@ -11,6 +11,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { formatExactDateTime } from '../utils/formatters';
+import { DataFreshnessBadge } from './DataFreshnessBadge';
 
 export type ProvenanceType = 'modèle' | 'observation in situ' | 'modèle probabiliste' | 'réanalyse';
 
@@ -216,6 +217,16 @@ export const DataProvenanceBox: React.FC<DataProvenanceProps> = ({
             </div>
           </>
         )}
+
+        {/* Freshness Status Row */}
+        <div className="flex items-baseline justify-between gap-4 pt-1.5 border-t border-slate-800/60">
+          <span className="text-slate-400 shrink-0">Fraîcheur :</span>
+          <DataFreshnessBadge
+            timestamp={isModel ? lastUpdated : measuredAt}
+            isObservation={isObs}
+            variant="inline"
+          />
+        </div>
       </div>
 
       {/* Explanatory footer context */}

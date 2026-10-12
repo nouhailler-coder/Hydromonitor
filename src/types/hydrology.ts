@@ -1,5 +1,20 @@
 export type DataCategory = 'OBSERVATION' | 'MODELE' | 'PREVISION';
 
+export type FreshnessStatus = 'recent' | 'aging' | 'obsolete' | 'unavailable';
+
+export interface FreshnessInfo {
+  status: FreshnessStatus;
+  statusLabel: string;
+  statusShortLabel: string;
+  relativeTime: string;
+  ageHours: number;
+  icon: string;
+  textColor: string;
+  dotColor: string;
+  badgeBg: string;
+  borderColor: string;
+}
+
 export type TrendDirection = 'RISING' | 'FALLING' | 'STABLE';
 
 export type HydrologicalRegimeCode =
