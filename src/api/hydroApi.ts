@@ -202,4 +202,54 @@ export const hydroApi = {
       method: 'POST',
     });
   },
+
+  async getStatusThresholds(): Promise<{
+    engine: string;
+    documentation: string;
+    pipeline: string;
+    categories: string[];
+    items: import('../types/hydrology').StatusThresholdConfig[];
+  }> {
+    return fetchJson('/api/hydrological-status/thresholds');
+  },
+
+  async saveStatusThreshold(
+    config: import('../types/hydrology').StatusThresholdConfig
+  ): Promise<{ success: boolean; message: string; config: any }> {
+    return fetchJson('/api/hydrological-status/thresholds', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  },
+
+  async resetStatusThreshold(configId?: string): Promise<{ success: boolean; message: string }> {
+    return fetchJson('/api/hydrological-status/thresholds/reset', {
+      method: 'POST',
+      body: JSON.stringify({ config_id: configId }),
+    });
+  },
+
+  async classifyDischarge(params: {
+    flow: number;
+    q10?: number;
+    q25?: number;
+    q50?: number;
+    q75?: number;
+    q90?: number;
+    source?: string;
+    region_id?: string;
+    config_id?: string;
+  }): Promise<import('../types/hydrology').HydrologicalStatusEvaluation> {
+    const q = new URLSearchParams();
+    q.set('flow', String(params.flow));
+    if (params.q10 !== undefined) q.set('q10', String(params.q10));
+    if (params.q25 !== undefined) q.set('q25', String(params.q25));
+    if (params.q50 !== undefined) q.set('q50', String(params.q50));
+    if (params.q75 !== undefined) q.set('q75', String(params.q75));
+    if (params.q90 !== undefined) q.set('q90', String(params.q90));
+    if (params.source) q.set('source', params.source);
+    if (params.region_id) q.set('region_id', params.region_id);
+    if (params.config_id) q.set('config_id', params.config_id);
+    return fetchJson(`/api/hydrological-status/classify?${q.toString()}`);
+  },
 };

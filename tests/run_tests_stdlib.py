@@ -16,6 +16,11 @@ from ingestion.mapping.spatial_mapper import (
     map_station_to_river_segment,
     generate_river_data_mapping_table,
 )
+from app.services.status_engine import (
+    HydrologicalStatusEngine,
+    HydrologicalStatusCode,
+    ThresholdConfig,
+)
 
 
 class HydroMonitorTestSuite(unittest.TestCase):
@@ -133,6 +138,93 @@ class HydroMonitorTestSuite(unittest.TestCase):
         )
         self.assertEqual(basin["hydrobasins_id"], 2040023010)
         self.assertEqual(basin["level"], 4)
+
+    def test_hydrological_status_engine_pipeline_and_threshold_configs(self) -> None:
+        engine = HydrologicalStatusEngine()
+        quantiles = {
+            "q10": 195.0,
+            "q25": 275.0,
+            "q50": 355.0,
+            "q75": 440.0,
+            "q90": 560.0,
+            "q98": 720.0,
+        }
+
+        # 1. Pipeline verification: Débit actuel → historique → percentile → seuils → classification
+        eval_res = engine.evaluate(current_discharge_m3s=425.0, historical_quantiles=quantiles)
+        pipeline = eval_res["pipeline"]
+        self.assertEqual(pipeline["step_1_discharge"]["discharge_m3s"], 425.0)
+        self.assertEqual(pipeline["step_2_history"]["seasonal_median_m3s"], 355.0)
+        self.assertIn("percentile", pipeline["step_3_percentile"])
+        self.assertIn("step_4_thresholds", pipeline)
+        self.assertEqual(eval_res["status_code"], HydrologicalStatusCode.NORMAL.value)
+        self.assertEqual(eval_res["label_fr"], "Normal")
+
+        # 2. Testing all 6 categories on documented thresholds (<P10, P10-P25, P25-P75, P75-P90, P90-P98, >P98)
+        # Drought (< P10)
+        drought = engine.evaluate(current_discharge_m3s=150.0, historical_quantiles=quantiles)
+        self.assertEqual(drought["status_code"], HydrologicalStatusCode.DROUGHT.value)
+        self.assertEqual(drought["label_fr"], "Sécheresse")
+        self.assertEqual(drought["severity"], "crisis")
+
+        # Low flow (P10 - P25)
+        low_flow = engine.evaluate(current_discharge_m3s=230.0, historical_quantiles=quantiles)
+        self.assertEqual(low_flow["status_code"], HydrologicalStatusCode.LOW_FLOW.value)
+        self.assertEqual(low_flow["label_fr"], "Basses eaux")
+
+        # Normal (P25 - P75)
+        normal = engine.evaluate(current_discharge_m3s=360.0, historical_quantiles=quantiles)
+        self.assertEqual(normal["status_code"], HydrologicalStatusCode.NORMAL.value)
+        self.assertEqual(normal["label_fr"], "Normal")
+
+        # High flow (P75 - P90)
+        high_flow = engine.evaluate(current_discharge_m3s=490.0, historical_quantiles=quantiles)
+        self.assertEqual(high_flow["status_code"], HydrologicalStatusCode.HIGH_FLOW.value)
+        self.assertEqual(high_flow["label_fr"], "Hautes eaux")
+
+        # Flood (P90 - P98)
+        flood = engine.evaluate(current_discharge_m3s=620.0, historical_quantiles=quantiles)
+        self.assertEqual(flood["status_code"], HydrologicalStatusCode.FLOOD.value)
+        self.assertEqual(flood["label_fr"], "Crue")
+
+        # Extreme Flood (> P98)
+        extreme_flood = engine.evaluate(current_discharge_m3s=850.0, historical_quantiles=quantiles)
+        self.assertEqual(extreme_flood["status_code"], HydrologicalStatusCode.EXTREME_FLOOD.value)
+        self.assertEqual(extreme_flood["label_fr"], "Crue extrême")
+
+        # 3. Modifiable thresholds by source and region
+        cfg_glofas = engine.get_config(source="GLOFAS")
+        self.assertEqual(cfg_glofas.source, "GLOFAS")
+        self.assertEqual(cfg_glofas.flood_min_percentile, 89.0)
+
+        cfg_med = engine.get_config(region_id="region-mediterranee")
+        self.assertEqual(cfg_med.flood_min_percentile, 88.0)
+        self.assertEqual(cfg_med.drought_max_percentile, 8.0)
+
+        # Custom threshold modification test
+        custom_cfg = ThresholdConfig(
+            id="custom_test_zone",
+            name="Zone Expérimentale",
+            source="HUBEAU",
+            region_id="zone-speciale",
+            region_name="Zone Spéciale",
+            scientific_reference="Test Documenté",
+            description="Configuration personnalisée",
+            drought_max_percentile=15.0,  # < P15 = sécheresse
+            low_flow_max_percentile=30.0,
+            high_flow_min_percentile=70.0,
+            flood_min_percentile=85.0,
+            extreme_flood_min_percentile=95.0,
+        )
+        engine.update_config(custom_cfg)
+        cfg_retrieved = engine.get_config(region_id="zone-speciale")
+        self.assertEqual(cfg_retrieved.drought_max_percentile, 15.0)
+
+        # Under standard config, percentile 12 is LOW_FLOW. Under custom_cfg, percentile 12 is DROUGHT!
+        std_p12 = engine.classify_percentile(12.0, engine.get_config(config_id="default_standard"))
+        custom_p12 = engine.classify_percentile(12.0, cfg_retrieved)
+        self.assertEqual(std_p12, HydrologicalStatusCode.LOW_FLOW)
+        self.assertEqual(custom_p12, HydrologicalStatusCode.DROUGHT)
 
 
 if __name__ == "__main__":

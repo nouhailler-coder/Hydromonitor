@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Activity,
   Thermometer,
@@ -11,6 +11,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Sliders,
 } from 'lucide-react';
 import {
   RiverDetail,
@@ -26,6 +27,8 @@ import {
 import { CategoryBadge } from './CategoryBadge';
 import { DataProvenanceBox } from './DataProvenanceBox';
 import { DataFreshnessBadge } from './DataFreshnessBadge';
+import { HydrologicalStatusBadge } from './HydrologicalStatusBadge';
+import { HydrologicalStatusModal } from './HydrologicalStatusModal';
 import {
   DischargeHistoryChart,
   EnsembleForecastChart,

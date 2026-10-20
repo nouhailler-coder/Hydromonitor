@@ -2,6 +2,9 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from app.geo.spatial import haversine_distance_m
+from app.services.status_engine import HydrologicalStatusEngine, HydrologicalStatusCode, ThresholdConfig
+
+status_engine = HydrologicalStatusEngine()
 
 
 def get_reference_rivers() -> list[dict[str, Any]]:
@@ -230,6 +233,14 @@ class RiverService:
         else:
             level_label = "exceptionnel"
 
+        # Evaluation via HydrologicalStatusEngine (Débit actuel → historique → percentile → seuils → classification)
+        status_eval = status_engine.evaluate(
+            current_discharge_m3s=current_q,
+            historical_quantiles=q_dict,
+            given_percentile=percentile,
+            region_id=river.get("id"),
+        )
+
         return {
             "river_id": river["id"],
             "reference_label": river["reference_label"],
@@ -246,6 +257,9 @@ class RiverService:
             "deviation_to_annual_mean_m3s": dev_annual_mean_m3s,
             "deviation_to_annual_mean_pct": dev_annual_mean_pct,
             "level_label": level_label,
+            "hydrological_status": status_eval["status_code"],
+            "hydrological_status_label": status_eval["label_fr"],
+            "status_evaluation": status_eval,
             "historical_quantiles_for_date": q_dict,
             "trend_direction": river["trend_direction"],
             "trend_days": river["trend_days"],
@@ -259,6 +273,27 @@ class RiverService:
                 "takeaway": "Un débit de 400 m³/s n'a pas la même signification en janvier et en août.",
             },
         }
+
+    def evaluate_hydrological_status(
+        self,
+        river_id: str,
+        discharge_m3s: float | None = None,
+        source: str = "ALL",
+        region_id: str | None = None,
+        config_id: str | None = None,
+    ) -> dict[str, Any]:
+        rivers = get_reference_rivers()
+        river = next((r for r in rivers if r["id"] == river_id), rivers[0])
+        flow = discharge_m3s if discharge_m3s is not None else float(river["current_discharge_m3s"])
+        q_dict = river["historical_quantiles_for_date"]
+        chosen_region = region_id or river["id"]
+        return status_engine.evaluate(
+            current_discharge_m3s=flow,
+            historical_quantiles=q_dict,
+            source=source,
+            region_id=chosen_region,
+            config_id=config_id,
+        )
 
     def find_nearby(self, lat: float, lon: float, radius_km: float = 50.0) -> list[dict[str, Any]]:
         matches = []

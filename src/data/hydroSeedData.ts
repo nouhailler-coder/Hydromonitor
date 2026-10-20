@@ -10,7 +10,10 @@ import {
   TrendDirection,
   RiverDataMappingItem,
   MappingQualityAuditSummary,
+  HydrologicalStatusCode,
+  HydrologicalStatusEvaluation,
 } from '../types/hydrology';
+import { hydrologicalStatusEngine } from '../services/hydrologicalStatusEngine';
 
 export type { DataCategory };
 
@@ -1552,6 +1555,15 @@ export function computeHydrologicalAnalysis(
 
   const anomalyReport = computeHydrologicalAnomalyReport(river.id, activeProfile.segment_id);
 
+  const statusEval = hydrologicalStatusEngine.evaluate({
+    current_discharge_m3s: activeProfile.current_discharge_m3s,
+    historical_quantiles: activeProfile.historical_quantiles_for_date,
+    given_percentile: activeProfile.historical_percentile,
+    source: 'GLOFAS',
+    region_id: river.id,
+    reference_period_label: 'Climatologie GloFAS ERA5 1991–2020 (30 ans)',
+  });
+
   return {
     river_id: river.id,
     river_name: river.name,
@@ -1601,6 +1613,9 @@ export function computeHydrologicalAnalysis(
     anomaly_report: anomalyReport,
     diagnostic_headline: activeProfile.regime_label,
     diagnostic_explanation: activeProfile.interpretation_summary,
+    hydrological_status: statusEval.status_code,
+    hydrological_status_label: statusEval.label_fr,
+    status_evaluation: statusEval,
   };
 }
 

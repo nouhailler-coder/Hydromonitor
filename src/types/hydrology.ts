@@ -17,6 +17,98 @@ export interface FreshnessInfo {
 
 export type TrendDirection = 'RISING' | 'FALLING' | 'STABLE';
 
+export type HydrologicalStatusCode =
+  | 'DROUGHT'
+  | 'LOW_FLOW'
+  | 'NORMAL'
+  | 'HIGH_FLOW'
+  | 'FLOOD'
+  | 'EXTREME_FLOOD';
+
+export interface StatusThresholdConfig {
+  id: string;
+  name: string;
+  source: 'GLOFAS' | 'HUBEAU' | 'ALL' | string;
+  region_id?: string | null;
+  region_name?: string | null;
+  scientific_reference: string;
+  description: string;
+  drought_max_percentile: number; // e.g. 10.0 (< 10 -> DROUGHT)
+  low_flow_max_percentile: number; // e.g. 25.0 (10..25 -> LOW_FLOW)
+  high_flow_min_percentile: number; // e.g. 75.0 (75..90 -> HIGH_FLOW)
+  flood_min_percentile: number; // e.g. 90.0 (90..98 -> FLOOD)
+  extreme_flood_min_percentile: number; // e.g. 98.0 (> 98 -> EXTREME_FLOOD)
+  is_default?: boolean;
+}
+
+export interface HydrologicalPipelineStepDischarge {
+  step_name: 'Débit actuel';
+  discharge_m3s: number;
+  unit: 'm³/s';
+}
+
+export interface HydrologicalPipelineStepHistory {
+  step_name: 'Historique';
+  period: string;
+  seasonal_median_m3s: number;
+  quantiles_for_date: HistoricalQuantiles;
+}
+
+export interface HydrologicalPipelineStepPercentile {
+  step_name: 'Percentile';
+  percentile: number;
+  z_score: number;
+  formula: string;
+}
+
+export interface HydrologicalPipelineStepThresholds {
+  step_name: 'Seuils documentés';
+  config_id: string;
+  config_name: string;
+  source_target: string;
+  region_target: string;
+  scientific_reference: string;
+  matched_bracket: string;
+  thresholds: {
+    drought_max: number;
+    low_flow_max: number;
+    high_flow_min: number;
+    flood_min: number;
+    extreme_flood_min: number;
+  };
+}
+
+export interface HydrologicalPipelineStepClassification {
+  step_name: 'Classification';
+  status_code: HydrologicalStatusCode;
+  label_fr: string;
+  severity: 'crisis' | 'warning' | 'normal' | 'notice' | 'alert' | 'critical';
+  color: string;
+  badge_class: string;
+  summary: string;
+}
+
+export interface HydrologicalStatusEvaluation {
+  status_code: HydrologicalStatusCode;
+  label_fr: string;
+  severity: 'crisis' | 'warning' | 'normal' | 'notice' | 'alert' | 'critical';
+  color: string;
+  badge_class: string;
+  icon_name: string;
+  current_discharge_m3s: number;
+  calculated_percentile: number;
+  z_score: number;
+  threshold_config: StatusThresholdConfig;
+  pipeline: {
+    step_1_discharge: HydrologicalPipelineStepDischarge;
+    step_2_history: HydrologicalPipelineStepHistory;
+    step_3_percentile: HydrologicalPipelineStepPercentile;
+    step_4_thresholds: HydrologicalPipelineStepThresholds;
+    step_5_classification: HydrologicalPipelineStepClassification;
+  };
+  management_recommendation: string;
+}
+
 export type HydrologicalRegimeCode =
   | 'HIGH_FLOW'
   | 'ABOVE_NORMAL'
@@ -163,6 +255,9 @@ export interface HydrologicalAnalysis {
   anomaly_report: HydrologicalAnomalyReport;
   diagnostic_headline: string;
   diagnostic_explanation: string;
+  hydrological_status?: HydrologicalStatusCode;
+  hydrological_status_label?: string;
+  status_evaluation?: HydrologicalStatusEvaluation;
 }
 
 export interface RiverSearchItem {

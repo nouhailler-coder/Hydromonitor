@@ -16,6 +16,7 @@ import {
   computeHydrologicalAnalysis,
   computeHydrologicalAnomalyReport,
 } from './src/data/hydroSeedData.ts';
+import { hydrologicalStatusEngine } from './src/services/hydrologicalStatusEngine.ts';
 
 const app = express();
 const PORT = 3000;
@@ -271,6 +272,72 @@ app.get('/api/rivers/:river_id/anomalies', (req: Request, res: Response) => {
     isNaN(flow as number) ? undefined : flow
   );
   res.json(anomaly);
+});
+
+// 6d. Hydrological Status Engine: Get all threshold configurations (by source & region)
+app.get('/api/hydrological-status/thresholds', (_req: Request, res: Response) => {
+  const configs = hydrologicalStatusEngine.getAllConfigs();
+  res.json({
+    engine: 'HydrologicalStatusEngine v1.0',
+    documentation:
+      'SDAGE & Guide méthodologique d’application des débits d’étiage (MEDDE/OFB), Directive Cadre Eau, Vigicrues, CEMS GloFAS v5.0',
+    pipeline: 'Débit actuel → historique → percentile → seuils → classification',
+    categories: ['DROUGHT', 'LOW_FLOW', 'NORMAL', 'HIGH_FLOW', 'FLOOD', 'EXTREME_FLOOD'],
+    items: configs,
+  });
+});
+
+// 6e. Hydrological Status Engine: Save or update threshold configuration
+app.post('/api/hydrological-status/thresholds', (req: Request, res: Response) => {
+  const config = req.body;
+  if (!config || !config.id || !config.name) {
+    res.status(400).json({ detail: 'Configuration de seuil invalide (id et name requis).' });
+    return;
+  }
+  hydrologicalStatusEngine.saveConfig(config);
+  res.json({
+    success: true,
+    message: `Configuration de seuils "${config.name}" enregistrée avec succès.`,
+    config,
+  });
+});
+
+// 6f. Hydrological Status Engine: Reset threshold configuration
+app.post('/api/hydrological-status/thresholds/reset', (req: Request, res: Response) => {
+  const { config_id } = req.body;
+  if (config_id) {
+    hydrologicalStatusEngine.resetConfig(config_id);
+    res.json({ success: true, message: `Configuration "${config_id}" réinitialisée aux seuils par défaut.` });
+  } else {
+    hydrologicalStatusEngine.resetAllToDefaults();
+    res.json({ success: true, message: 'Toutes les configurations de seuils réinitialisées.' });
+  }
+});
+
+// 6g. Hydrological Status Engine: Direct classification endpoint
+app.get('/api/hydrological-status/classify', (req: Request, res: Response) => {
+  const flow = req.query.flow ? parseFloat(String(req.query.flow)) : 425.0;
+  const q10 = req.query.q10 ? parseFloat(String(req.query.q10)) : 195.0;
+  const q25 = req.query.q25 ? parseFloat(String(req.query.q25)) : 275.0;
+  const q50 = req.query.q50 ? parseFloat(String(req.query.q50)) : 355.0;
+  const q75 = req.query.q75 ? parseFloat(String(req.query.q75)) : 440.0;
+  const q90 = req.query.q90 ? parseFloat(String(req.query.q90)) : 560.0;
+  const source = req.query.source ? String(req.query.source) : 'ALL';
+  const regionId = req.query.region_id ? String(req.query.region_id) : null;
+  const configId = req.query.config_id ? String(req.query.config_id) : null;
+  const percentile = req.query.percentile ? parseInt(String(req.query.percentile), 10) : undefined;
+
+  const quantiles = { q10, q25, q50, q75, q90 };
+  const evaluation = hydrologicalStatusEngine.evaluate({
+    current_discharge_m3s: flow,
+    historical_quantiles: quantiles,
+    given_percentile: isNaN(percentile as number) ? undefined : percentile,
+    source,
+    region_id: regionId,
+    config_id: configId,
+  });
+
+  res.json(evaluation);
 });
 
 // 7. River Segments (HydroRIVERS + GloFAS spatial mapping)
